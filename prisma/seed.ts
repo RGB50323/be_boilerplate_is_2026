@@ -1,7 +1,13 @@
 import 'dotenv/config';
 import bcrypt from 'bcrypt';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../src/generated/prisma/client.js';
+import { PrismaClient, Rol } from '../src/generated/prisma/client.js';
+
+// Crea usuarios con contraseña conocida (incluido un GERENTE_GENERAL), así que
+// nunca debe correr contra producción.
+if (process.env.NODE_ENV === 'production') {
+  throw new Error('El seed no se puede ejecutar con NODE_ENV=production.');
+}
 
 const PASSWORD = 'Demo1234!';
 
@@ -49,16 +55,16 @@ type UsuarioSeed = {
   email: string;
   nombre: string;
   apellido: string;
-  rol: 'CLIENTE' | 'MESERO' | 'COCINA' | 'GERENTE' | 'GERENTE_GENERAL';
+  rol: Rol;
   sucursal?: string;
 };
 
 const USUARIOS: UsuarioSeed[] = [
-  { email: 'demo@example.com', nombre: 'Cliente', apellido: 'Demo', rol: 'CLIENTE' },
-  { email: 'mesero@example.com', nombre: 'Mario', apellido: 'Mesero', rol: 'MESERO', sucursal: 'Centro' },
-  { email: 'cocina@example.com', nombre: 'Carla', apellido: 'Cocina', rol: 'COCINA', sucursal: 'Centro' },
-  { email: 'gerente@example.com', nombre: 'Gabriel', apellido: 'Gerente', rol: 'GERENTE', sucursal: 'Centro' },
-  { email: 'gerente.general@example.com', nombre: 'Gina', apellido: 'General', rol: 'GERENTE_GENERAL' },
+  { email: 'demo@example.com', nombre: 'Cliente', apellido: 'Demo', rol: Rol.CLIENTE },
+  { email: 'mesero@example.com', nombre: 'Mario', apellido: 'Mesero', rol: Rol.MESERO, sucursal: 'Centro' },
+  { email: 'cocina@example.com', nombre: 'Carla', apellido: 'Cocina', rol: Rol.COCINA, sucursal: 'Centro' },
+  { email: 'gerente@example.com', nombre: 'Gabriel', apellido: 'Gerente', rol: Rol.GERENTE, sucursal: 'Centro' },
+  { email: 'gerente.general@example.com', nombre: 'Gina', apellido: 'General', rol: Rol.GERENTE_GENERAL },
 ];
 
 function imagen(nombre: string): string {
