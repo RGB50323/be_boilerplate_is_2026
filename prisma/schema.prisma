@@ -216,6 +216,8 @@ model Sucursal {
 model RefreshToken {
   id String @id @default(uuid()) @db.Uuid
 
+  // Se guarda el SHA-256 del token, nunca el token en claro: si se filtra la
+  // base, los refresh tokens emitidos no son utilizables.
   tokenHash String @unique @map("token_hash")
 
   userId String @map("user_id") @db.Uuid
@@ -316,7 +318,6 @@ model Pedido {
 
   detalles          DetallePedido[]
   pagos             Pago[]
-  comprobantes      Comprobante[]
   resenas           Resena[]
   movimientosPuntos MovimientoPuntos[]
   canjes            Canje[]
@@ -381,6 +382,10 @@ model Reservacion {
   mesa    Mesa @relation(fields: [mesaId], references: [id])
   cliente User @relation(fields: [clienteId], references: [id])
 
+  // El doble booking lo impide la exclusion constraint
+  // `reservacion_mesa_sin_traslape` (btree_gist), definida en SQL crudo en la
+  // migración porque Prisma no las soporta.
+  @@index([mesaId, inicio])
   @@index([clienteId, estado])
   @@index([estado, inicio])
   @@map("reservacion")
@@ -399,7 +404,7 @@ model Insumo {
   movimientos MovimientoInsumo[]
   alertas     AlertaInsumo[]
 
-  @@index([sucursalId])
+  @@unique([sucursalId, nombre])
   @@map("insumo")
 }
 
@@ -458,18 +463,17 @@ model Pago {
   @@map("pago")
 }
 
+// El pedido y la transacción se obtienen a través del pago, así no pueden
+// quedar desalineados con los del comprobante.
 model Comprobante {
-  id            Int      @id @default(autoincrement())
-  numero        String   @unique @db.VarChar(20)
-  ticketId      Int      @map("ticket_id")
-  transaccionId String   @unique @map("transaccion_id") @db.VarChar(80)
-  fechaEmision  DateTime @default(now()) @map("fecha_emision")
-  archivoUrl    String?  @map("archivo_url") @db.VarChar(255)
+  id           Int      @id @default(autoincrement())
+  numero       String   @unique @db.VarChar(20)
+  pagoId       Int      @unique @map("pago_id")
+  fechaEmision DateTime @default(now()) @map("fecha_emision")
+  archivoUrl   String?  @map("archivo_url") @db.VarChar(255)
 
-  pedido Pedido @relation(fields: [ticketId], references: [id])
-  pago   Pago   @relation(fields: [transaccionId], references: [transaccionId])
+  pago Pago @relation(fields: [pagoId], references: [id])
 
-  @@index([ticketId])
   @@map("comprobante")
 }
 
@@ -564,6 +568,8 @@ model MovimientoPuntos {
 model HistorialLealtad {
   id            Int            @id @default(autoincrement())
   entidad       EntidadLealtad
+  // Polimórfico: apunta a regla_puntos.id o a beneficio.id según `entidad`,
+  // por eso no tiene FK.
   entidadId     Int            @map("entidad_id")
   accion        AccionLealtad
   valorAnterior Json?          @map("valor_anterior")
@@ -618,7 +624,6 @@ model Notificacion {
 
   destinatario User @relation(fields: [destinatarioId], references: [id], onDelete: Cascade)
 
-  @@unique([moduloOrigen, referenciaTipo, referenciaId, destinatarioId])
   @@index([destinatarioId, leida, creadaEn(sort: Desc)])
   @@map("notificacion")
 }
