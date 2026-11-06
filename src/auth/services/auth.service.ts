@@ -55,6 +55,26 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * Resuelve el usuario dueño de un access token.
+   *
+   * Se relee el usuario en cada llamada para que una cuenta desactivada o
+   * eliminada deje de funcionar sin esperar a que expire el token. Lo usan
+   * JwtAuthGuard (HTTP) y los gateways de WebSocket, así ambos aplican las
+   * mismas reglas.
+   *
+   * @throws {UnauthorizedException} si el token o la cuenta no son válidos.
+   */
+  async authenticateAccessToken(accessToken: string): Promise<User> {
+    const payload = await this.tokenService.verifyAccessToken(accessToken);
+
+    const user = await this.usersService.findById(payload.sub);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('La cuenta no existe o está inactiva.');
+    }
+    return user;
+  }
+
   refresh(refreshToken: string): Promise<{ user: User; tokens: TokenPair }> {
     return this.tokenService.rotate(refreshToken);
   }

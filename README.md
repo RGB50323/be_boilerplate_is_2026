@@ -16,6 +16,7 @@ API REST construida con **NestJS 12**, **Prisma 7** y **PostgreSQL 18**, con aut
 - [Prisma en detalle](#prisma-en-detalle)
 - [Autenticación](#autenticación)
 - [Endpoints](#endpoints)
+- [Cocina: pedidos pendientes (H06)](#cocina-pedidos-pendientes-h06)
 - [Arquitectura por capas](#arquitectura-por-capas)
 - [Path aliases](#path-aliases)
 - [Estructura del proyecto](#estructura-del-proyecto)
@@ -32,6 +33,8 @@ API REST construida con **NestJS 12**, **Prisma 7** y **PostgreSQL 18**, con aut
 | [Prisma ORM](https://www.prisma.io) | 7 | ORM y motor de migraciones versionadas |
 | [PostgreSQL](https://www.postgresql.org) | 18 | Base de datos relacional |
 | [@nestjs/jwt](https://github.com/nestjs/jwt) | 12 | Firma y verificación de los JWT de acceso |
+| [Socket.IO](https://socket.io) + [@nestjs/websockets](https://docs.nestjs.com/websockets/gateways) | 4 / 12 | Eventos en tiempo real (tablero de cocina) |
+| [@nestjs/event-emitter](https://docs.nestjs.com/techniques/events) | 12 | Bus de eventos interno entre módulos y gateways |
 | [bcrypt](https://github.com/kelektiv/node.bcrypt.js) | 6 | Hasheo de contraseñas (cost 12 por defecto) |
 | [class-validator](https://github.com/typestack/class-validator) | 0.15 | Validación declarativa de los DTO de entrada |
 | [Swagger](https://docs.nestjs.com/openapi/introduction) | 12 | Documentación OpenAPI en `/api/docs` |
@@ -81,6 +84,7 @@ cp .env.example .env
 | `JWT_EXPIRES_IN` | `15m` | Vigencia del access token |
 | `REFRESH_TOKEN_EXPIRES_IN_DAYS` | `7` | Vigencia del refresh token |
 | `BCRYPT_SALT_ROUNDS` | `12` | Cost factor de bcrypt |
+| `COCINA_MINUTOS_RETRASO` | `15` | Minutos de espera a partir de los cuales un pedido en cocina sale como `retrasado` |
 
 > La app **valida el entorno al arrancar** ([env.validation.ts](src/config/env.validation.ts)). Si falta `DATABASE_URL` o `JWT_SECRET`, o si el secreto es más corto que 32 caracteres, falla de inmediato con un mensaje claro en lugar de romperse más tarde.
 
@@ -241,11 +245,29 @@ npm run db:reset
 
 ### Seed
 
-[prisma/seed.ts](prisma/seed.ts) crea un usuario de prueba mediante `upsert`, así que se puede correr las veces que haga falta:
+[prisma/seed.ts](prisma/seed.ts) carga datos de prueba mediante `upsert`, así que se puede correr las veces que haga falta.
 
-| Email | Contraseña |
-|---|---|
-| `demo@example.com` | `Demo1234!` |
+Todos los usuarios tienen la contraseña `Demo1234!`:
+
+| Email | Rol | Sucursal |
+|---|---|---|
+| `demo@example.com` | `CLIENTE` | — |
+| `mesero@example.com` | `MESERO` | Centro |
+| `cocina@example.com` | `COCINA` | Centro |
+| `gerente@example.com` | `GERENTE` | Centro |
+| `gerente.general@example.com` | `GERENTE_GENERAL` | — |
+
+Además crea dos sucursales (Centro y Escalón), mesas, el menú y pedidos de ejemplo para el tablero de cocina. La hora de llegada se recalcula en cada corrida:
+
+| Pedido | Sucursal | Caso | ¿Aparece en cocina? |
+|---|---|---|---|
+| `C-0001` | Centro | Mesa 3, más de 15 minutos de espera | Sí, `retrasado` |
+| `C-0002` | Centro | Para llevar con pago confirmado | Sí |
+| `C-0003` | Centro | Mesa 1, recién llegado | Sí |
+| `C-0004` | Centro | Para llevar en `PENDIENTE_PAGO` | No |
+| `C-0005` | Centro | Todos los ítems `LISTO` | No |
+| `E-0001` | Escalón | Mesa 2, más de 15 minutos de espera | Solo para Escalón |
+| `E-0002` | Escalón | Para llevar | Solo para Escalón |
 
 ---
 
@@ -272,11 +294,13 @@ Esquema **access token + refresh token**, solo con email y contraseña.
 
 **El usuario se relee en cada request**, así una cuenta desactivada o borrada deja de funcionar al instante, sin esperar a que expire el token.
 
+**Autorización por rol.** El access token lleva `sub`, `email`, `rol` y `sucursalId`. El frontend usa esos claims para decidir qué vistas mostrar. El backend no autoriza con ellos: `RolesGuard` (global, corre después de `JwtAuthGuard`) usa el rol del usuario releído de la base. Una ruta se restringe con `@Roles(Rol.COCINA, ...)`; sin el decorador queda abierta a cualquier usuario autenticado.
+
 ### Buenas prácticas REST aplicadas
 
 - **Versionado en la URI:** todo cuelga de `/api/v1`.
 - **Sustantivos en plural para los recursos:** crear un usuario es `POST /users`, no `POST /createUser`.
-- **Códigos de estado correctos:** `201` al crear, `200` en login, `204` en logout (sin cuerpo), `400` de validación, `401` de autenticación, `409` de conflicto.
+- **Códigos de estado correctos:** `201` al crear, `200` en login, `204` en logout (sin cuerpo), `400` de validación, `401` de autenticación, `403` de autorización, `409` de conflicto.
 - **Validación estricta de la entrada:** `whitelist` descarta propiedades no declaradas y `forbidNonWhitelisted` rechaza la request si vienen de más, en vez de ignorarlas en silencio.
 - **Errores con forma consistente:** `{ message, error, statusCode }`.
 
@@ -294,6 +318,7 @@ Base: `http://localhost:3000/api/v1` · Documentación interactiva: `http://loca
 | `POST` | `/auth/refresh` | — | `200` | Renueva el par de tokens |
 | `POST` | `/auth/logout` | — | `204` | Cierra la sesión |
 | `GET` | `/auth/me` | Bearer | `200` | Usuario autenticado |
+| `GET` | `/cocina/pedidos` | Bearer · `COCINA`, `GERENTE`, `GERENTE_GENERAL` | `200` | Pedidos pendientes de cocina de la sucursal del usuario |
 
 ### Ejemplos
 
@@ -367,6 +392,85 @@ Responde `204 No Content`. Es idempotente: repetirlo con un token ya revocado ta
 
 ---
 
+## Cocina: pedidos pendientes (H06)
+
+El tablero de cocina carga la cola con un `GET` y después se mantiene al día por Socket.IO, sin recargar.
+
+### `GET /cocina/pedidos`
+
+```bash
+curl $BASE/cocina/pedidos -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+```jsonc
+// 200 OK — del más antiguo al más reciente
+[
+  {
+    "id": 41,
+    "numero": "C-0001",
+    "tipo": "MESA",              // "MESA" | "LLEVAR"
+    "destino": "Mesa 3",         // "Mesa N" o "Para llevar"
+    "mesaNumero": 3,             // null en pedidos para llevar
+    "creadoEn": "2026-11-06T05:40:00.000Z",
+    "minutosEspera": 22,         // calculado por el servidor al responder
+    "retrasado": true,           // minutosEspera > COCINA_MINUTOS_RETRASO
+    "items": [
+      { "id": 101, "platillo": "Hamburguesa", "cantidad": 2, "nota": "Una sin cebolla", "estado": "PENDIENTE" },
+      { "id": 102, "platillo": "Limonada con soda", "cantidad": 2, "nota": null, "estado": "LISTO" }
+    ]
+  }
+]
+```
+
+Reglas:
+
+- **La sucursal sale siempre del usuario autenticado**, nunca del request: no hay forma de pedir la cola de otra sucursal.
+- Aparecen los pedidos en `ENVIADO_COCINA` o `EN_PREPARACION` con **al menos un ítem `PENDIENTE`**. Cuando todos los ítems están `LISTO`, el pedido sale de la lista. `items` trae todos los ítems del pedido, también los ya listos, para que cocina vea el pedido completo.
+- Un pedido **para llevar sin pago confirmado no aparece** porque sigue en `PENDIENTE_PAGO`. Esto depende de que el flujo de pagos lo pase a `ENVIADO_COCINA` solo después de confirmar el pago.
+- `401` sin token o con token inválido; `403` si el rol no tiene acceso o si el usuario no tiene sucursal asignada (por ejemplo, un `GERENTE_GENERAL` sin sucursal).
+
+### Eventos en tiempo real (Socket.IO)
+
+Namespace `/cocina`, autenticado con el mismo access token del HTTP:
+
+```ts
+import { io } from 'socket.io-client';
+
+const socket = io('http://localhost:3000/cocina', { auth: { token: accessToken } });
+
+socket.on('connect_error', (err) => console.error(err.message)); // token inválido, rol sin acceso, sin sucursal
+socket.on('pedido:nuevo', (pedido) => { /* agregar al final */ });
+socket.on('pedido:actualizado', (pedido) => { /* reemplazar por id */ });
+socket.on('pedido:retirado', ({ id }) => { /* quitar por id */ });
+```
+
+| Evento | Payload | Cuándo |
+|---|---|---|
+| `pedido:nuevo` | `PedidoCocinaDto` | Un pedido llega a cocina |
+| `pedido:actualizado` | `PedidoCocinaDto` | Cambia un pedido que sigue en la cola (por ejemplo, un ítem pasa a `LISTO`) |
+| `pedido:retirado` | `{ id: number }` | El pedido ya no tiene ítems `PENDIENTE`, o se canceló |
+
+- La conexión se rechaza en el handshake (el cliente recibe `connect_error`) con las mismas reglas que el endpoint.
+- Cada socket se une a la room `sucursal:{sucursalId}` de su usuario y solo recibe los eventos de esa sucursal.
+- El token se valida al conectar. Si expira con el socket abierto, la conexión sigue; la siguiente reconexión exige un token vigente.
+- `minutosEspera` y `retrasado` vienen calculados al momento del evento. Para que el resaltado avance con el tiempo, el tablero puede recalcularlos con `creadoEn`, o volver a pedir el `GET`.
+
+### Punto de integración para otros módulos
+
+Los eventos los publica `CocinaEventsService`, que exporta `CocinaModule`. Los flujos que cambian pedidos lo llaman después de confirmar su transacción:
+
+```ts
+// Pedidos / pagos: el pedido pasó a ENVIADO_COCINA
+await this.cocinaEvents.pedidoEnviadoACocina(pedido.id);
+
+// Marcar ítem listo o entregado, cancelar o editar el pedido
+await this.cocinaEvents.pedidoActualizado(pedido.id);
+```
+
+El servicio relee el pedido, decide qué evento corresponde (`nuevo`, `actualizado` o `retirado`) y lo publica en `EventEmitter2`. `CocinaGateway` lo escucha y lo reenvía a la room de la sucursal. Así quien cambia un pedido no depende de Socket.IO.
+
+---
+
 ## Arquitectura por capas
 
 Cada módulo se organiza en carpetas por responsabilidad, y **cada carpeta expone un barrel `index.ts`**. El flujo de una request es siempre el mismo:
@@ -434,6 +538,7 @@ Definidos en [tsconfig.json](tsconfig.json):
 | `@Users`, `@Users/*` | `src/users/…` |
 | `@Health`, `@Health/*` | `src/health/…` |
 | `@Prisma`, `@Prisma/*` | `src/prisma/…` |
+| `@Cocina`, `@Cocina/*` | `src/cocina/…` |
 | `@Common/*` | `src/common/*/index.ts` |
 | `@Config` | `src/config/index.ts` |
 | `@PrismaClient` | Cliente generado de Prisma |
@@ -469,9 +574,9 @@ nest build && tsc-alias -p tsconfig.build.json
 ├── Dockerfile                    # Imagen multi-stage de la API
 ├── prisma.config.ts              # Configuración del CLI de Prisma
 ├── prisma/
-│   ├── schema.prisma             # Modelos User y RefreshToken
+│   ├── schema.prisma             # Modelos del sistema de restaurantes
 │   ├── migrations/               # Migraciones versionadas
-│   └── seed.ts                   # Usuario demo
+│   └── seed.ts                   # Sucursales, menú, usuarios por rol y pedidos de ejemplo
 └── src/
     ├── main.ts                   # Bootstrap: prefijo, validación, Swagger
     ├── app.module.ts             # Módulo raíz y guard global
@@ -501,11 +606,21 @@ nest build && tsc-alias -p tsconfig.build.json
     │   ├── controllers/          # login, refresh, logout, me
     │   ├── services/             # AuthService y TokenService
     │   ├── repositories/         # RefreshTokenRepository
-    │   ├── guards/               # JwtAuthGuard
-    │   ├── decorators/           # @Public() y @CurrentUser()
+    │   ├── guards/               # JwtAuthGuard y RolesGuard
+    │   ├── decorators/           # @Public(), @CurrentUser() y @Roles()
     │   ├── types/                # AccessTokenPayload, TokenPair
     │   ├── dto/
     │   ├── auth.module.ts
+    │   └── index.ts
+    ├── cocina/
+    │   ├── controllers/          # GET /cocina/pedidos
+    │   ├── gateways/             # CocinaGateway (Socket.IO, namespace /cocina)
+    │   ├── services/             # CocinaService (reglas) y CocinaEventsService (integración)
+    │   ├── repositories/         # PedidoCocinaRepository
+    │   ├── events/               # Eventos internos y eventos de Socket.IO
+    │   ├── constants/            # Roles, estados en cocina, namespace y rooms
+    │   ├── dto/                  # PedidoCocinaDto
+    │   ├── cocina.module.ts
     │   └── index.ts
     └── generated/prisma/         # Cliente de Prisma (ignorado en git)
 ```
@@ -525,11 +640,11 @@ Cada carpeta de capa incluye un `index.ts` que reexporta sus elementos, de modo 
 | `lint` | Corre oxlint con chequeos type-aware |
 | `format` | Formatea con Prettier |
 | `test` | Tests unitarios |
-| `test:e2e` | Tests end-to-end |
+| `test:e2e` | Tests end-to-end (necesitan la base de `DATABASE_URL` con las migraciones aplicadas) |
 | `test:cov` | Tests con reporte de cobertura |
 | `prisma:generate` | Regenera el cliente de Prisma |
 | `prisma:migrate` | Crea y aplica una migración (desarrollo) |
 | `prisma:deploy` | Aplica migraciones pendientes (producción) |
 | `prisma:studio` | Abre Prisma Studio |
-| `db:seed` | Carga el usuario demo |
+| `db:seed` | Carga los datos de prueba |
 | `db:reset` | Resetea la base y vuelve a migrar |

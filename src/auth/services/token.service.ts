@@ -42,6 +42,8 @@ export class TokenService {
     const payload: AccessTokenPayload = {
       sub: user.id,
       email: user.email,
+      rol: user.rol,
+      sucursalId: user.sucursalId,
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
@@ -109,6 +111,20 @@ export class TokenService {
     await this.refreshTokenRepository.revokeByTokenHash(
       this.hashToken(refreshToken),
     );
+  }
+
+  /**
+   * Verifica firma y vigencia del access token.
+   *
+   * Cubre firma inválida, token expirado y token malformado con el mismo 401:
+   * no conviene decirle al cliente cuál de los tres fue.
+   */
+  async verifyAccessToken(accessToken: string): Promise<AccessTokenPayload> {
+    try {
+      return await this.jwtService.verifyAsync<AccessTokenPayload>(accessToken);
+    } catch {
+      throw new UnauthorizedException('Token de acceso inválido o expirado.');
+    }
   }
 
   /** Revoca todas las sesiones activas de un usuario. */
