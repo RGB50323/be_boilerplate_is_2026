@@ -66,6 +66,10 @@ function imagen(nombre: string): string {
 }
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('El seed no se ejecuta en producción.');
+  }
+
   const passwordHash = await bcrypt.hash(PASSWORD, 12);
 
   const sucursalId = new Map<string, number>();
