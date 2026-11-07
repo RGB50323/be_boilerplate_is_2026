@@ -10,6 +10,7 @@ import {
 import { Public } from '@Auth/decorators';
 import {
   ConsultarDisponibilidadDto,
+  ErrorDisponibilidadResponseDto,
   MesaDisponibleResponseDto,
   SucursalParamsDto,
   SucursalResponseDto,
@@ -26,6 +27,8 @@ export class ReservacionesController {
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary: 'Lista las sucursales con sus horarios de atención',
+    description:
+      'Endpoint público: no requiere token. Incluye los horarios locales registrados en la base de datos.',
   })
   @ApiOkResponse({
     type: SucursalResponseDto,
@@ -42,6 +45,8 @@ export class ReservacionesController {
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary: 'Consulta pública de mesas disponibles durante 2 horas',
+    description:
+      'No requiere token. La ruta acordada en el diseño técnico utiliza mesas-disponibles, con guion.',
   })
   @ApiParam({
     name: 'id',
@@ -54,10 +59,14 @@ export class ReservacionesController {
     description: 'Lista de mesas; vacía si no hay coincidencias.',
   })
   @ApiBadRequestResponse({
+    type: ErrorDisponibilidadResponseDto,
     description:
       'Parámetros inválidos, fecha/hora pasada o fuera del horario de atención.',
   })
-  @ApiNotFoundResponse({ description: 'La sucursal solicitada no existe.' })
+  @ApiNotFoundResponse({
+    type: ErrorDisponibilidadResponseDto,
+    description: 'La sucursal solicitada no existe.',
+  })
   consultarDisponibilidad(
     @Param() { id }: SucursalParamsDto,
     @Query() query: ConsultarDisponibilidadDto,

@@ -47,19 +47,31 @@ export class ReservacionesService {
     );
 
     if (!sucursal) {
-      throw new NotFoundException('La sucursal solicitada no existe.');
+      throw new NotFoundException({
+        statusCode: 404,
+        message: 'La sucursal solicitada no existe.',
+        errores: { sucursalId: 'La sucursal solicitada no existe.' },
+      });
     }
     if (inicio.getTime() < Date.now()) {
-      throw new BadRequestException(
-        'fecha y hora no pueden estar en el pasado.',
-      );
+      const message =
+        'Horario no válido: la fecha y hora no pueden estar en el pasado.';
+      throw new BadRequestException({
+        statusCode: 400,
+        message,
+        errores: { fecha: message, hora: message },
+      });
     }
 
     const horario = sucursal.horarios[0];
     if (!horario) {
-      throw new BadRequestException(
-        'La sucursal no tiene horario de atención para la fecha solicitada.',
-      );
+      const message =
+        'Horario no válido: la sucursal no atiende en la fecha solicitada.';
+      throw new BadRequestException({
+        statusCode: 400,
+        message,
+        errores: { fecha: message },
+      });
     }
 
     const [horas, minutos] = hora.split(':').map(Number);
@@ -69,9 +81,13 @@ export class ReservacionesService {
     const cierre =
       horario.cierre.getUTCHours() * 60 + horario.cierre.getUTCMinutes();
     if (inicioMinutos < apertura || inicioMinutos + DURACION_MINUTOS > cierre) {
-      throw new BadRequestException(
-        'hora debe permitir las 2 horas completas dentro del horario de atención.',
-      );
+      const message =
+        'Horario no válido: elegí una hora que permita las 2 horas completas dentro del horario de atención.';
+      throw new BadRequestException({
+        statusCode: 400,
+        message,
+        errores: { hora: message },
+      });
     }
 
     const mesas = await this.reservacionRepository.findMesasDisponibles({
