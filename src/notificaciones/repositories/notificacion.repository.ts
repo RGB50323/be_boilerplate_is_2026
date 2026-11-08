@@ -24,7 +24,6 @@ export interface CrearNotificacionData {
   estadoCorreo: EstadoCorreo | null;
 }
 
-/** Único punto de acceso a notificaciones y a sus destinatarios. */
 @Injectable()
 export class NotificacionRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -54,8 +53,7 @@ export class NotificacionRepository {
       });
       return resultado.count;
     } catch (error) {
-      // `skipDuplicates` absorbe estas colisiones; esta defensa evita filtrar
-      // P2002 si el proveedor cambia su comportamiento en una actualización.
+      // Respaldo por si se escapa un P2002
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'

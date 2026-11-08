@@ -66,8 +66,7 @@ export class NotificacionesService {
     );
 
     if (avisoValidado.enviarCorreo && registradas > 0) {
-      // El trabajo de correo comienza después del insert, pero no bloquea ni
-      // cambia el resultado de la notificación de plataforma.
+      // Correo en segundo plano
       void this.procesarCorreos(ids);
     }
 
@@ -102,8 +101,7 @@ export class NotificacionesService {
     aviso: Aviso,
   ): Promise<DestinatarioResuelto[]> {
     if ('usuarioId' in aviso.destinatario) {
-      // Un usuario inexistente o inactivo se omite sin error para simplificar
-      // el uso interno y evitar que una baja interrumpa el flujo originador.
+      // Usuario inexistente o inactivo: se omite
       return this.repository.resolverUsuarioActivo(
         aviso.destinatario.usuarioId as string,
       );
@@ -272,8 +270,7 @@ export class NotificacionesService {
             EstadoCorreo.ENVIADO,
           );
         } catch (persistenciaError) {
-          // El correo ya salió: un error al guardar su estado no debe causar
-          // un segundo envío al mismo destinatario.
+          // El correo ya salió: no reenviar
           this.logger.error(
             'No se pudo actualizar el estado del correo',
             persistenciaError,

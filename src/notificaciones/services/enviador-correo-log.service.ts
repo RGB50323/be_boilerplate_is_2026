@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { EnviadorCorreo, MensajeCorreo } from '@Notificaciones/types';
 
-/** Proveedor temporal: registra el correo hasta integrar Brevo o Resend. */
+// Proveedor temporal: solo registra el correo
 @Injectable()
 export class EnviadorCorreoLog implements EnviadorCorreo {
   private readonly logger = new Logger(EnviadorCorreoLog.name);
