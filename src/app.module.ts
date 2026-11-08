@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '@Auth/guards';
 import { HealthModule } from '@Health';
 import { PrismaModule } from '@Prisma';
 import { UsersModule } from '@Users';
+import { NotificacionesModule } from '@Notificaciones';
 import { validateEnv } from '@Config';
 import { MenuModule } from './menu/menu.module.js';
 
@@ -20,6 +21,7 @@ import { MenuModule } from './menu/menu.module.js';
     PrismaModule,
     HealthModule,
     UsersModule,
+    NotificacionesModule,
     AuthModule,
     MenuModule
   ],
