@@ -112,10 +112,11 @@ describe('NotificacionesService', () => {
     async ({ aviso, mensaje, campo }) => {
       const { service, repository } = crearContexto();
 
-      await service.notificar(aviso as Aviso).catch((error: unknown) => {
-        expect(error).toBeInstanceOf(ValidacionAvisoError);
-        expect((error as ValidacionAvisoError).message).toBe(mensaje);
-        expect((error as ValidacionAvisoError).campo).toBe(campo);
+      const resultado = service.notificar(aviso as Aviso);
+      await expect(resultado).rejects.toBeInstanceOf(ValidacionAvisoError);
+      await expect(resultado).rejects.toMatchObject({
+        message: mensaje,
+        campo,
       });
       expect(repository.resolverUsuarioActivo).not.toHaveBeenCalled();
       expect(repository.crearMuchas).not.toHaveBeenCalled();
