@@ -13,6 +13,17 @@ const SUCURSALES = [
   { nombre: 'Escalón', direccion: 'Paseo General Escalón #4567, San Salvador' },
 ];
 
+// Horas locales de America/El_Salvador. Domingo = 0, lunes = 1, ..., sábado = 6.
+const HORARIOS_SUCURSAL = [
+  { diaSemana: 0, apertura: '08:00', cierre: '18:00' },
+  { diaSemana: 1, apertura: '08:00', cierre: '21:00' },
+  { diaSemana: 2, apertura: '08:00', cierre: '21:00' },
+  { diaSemana: 3, apertura: '08:00', cierre: '21:00' },
+  { diaSemana: 4, apertura: '08:00', cierre: '21:00' },
+  { diaSemana: 5, apertura: '08:00', cierre: '23:00' },
+  { diaSemana: 6, apertura: '08:00', cierre: '23:00' },
+];
+
 const CATEGORIAS = [
   { nombre: 'Entradas', activa: true },
   { nombre: 'Platillos principales', activa: true },
@@ -83,6 +94,20 @@ async function main() {
   }
 
   for (const id of sucursalId.values()) {
+    for (const horario of HORARIOS_SUCURSAL) {
+      // Prisma recibe Date para TIME: la fecha es auxiliar y Z evita depender
+      // de la zona del equipo. Se guardan las horas locales, sin convertirlas a UTC.
+      const horas = {
+        apertura: new Date(`1970-01-01T${horario.apertura}:00.000Z`),
+        cierre: new Date(`1970-01-01T${horario.cierre}:00.000Z`),
+      };
+      await prisma.horarioSucursal.upsert({
+        where: { sucursalId_diaSemana: { sucursalId: id, diaSemana: horario.diaSemana } },
+        update: horas,
+        create: { sucursalId: id, diaSemana: horario.diaSemana, ...horas },
+      });
+    }
+
     for (let numero = 1; numero <= 6; numero++) {
       await prisma.mesa.upsert({
         where: { sucursalId_numero: { sucursalId: id, numero } },
