@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuthModule } from '@Auth';
-import { JwtAuthGuard } from '@Auth/guards';
+import { JwtAuthGuard, RolesGuard } from '@Auth/guards';
+import { CocinaModule } from '@Cocina';
 import { HealthModule } from '@Health';
 import { PrismaModule } from '@Prisma';
 import { ReservacionesModule } from '@Reservaciones';
@@ -19,6 +21,7 @@ import { MenuModule } from './menu/menu.module.js';
       // Si falta DATABASE_URL o JWT_SECRET, la app no arranca.
       validate: validateEnv,
     }),
+    EventEmitterModule.forRoot(),
     PrismaModule,
     HealthModule,
     UsersModule,
@@ -26,12 +29,17 @@ import { MenuModule } from './menu/menu.module.js';
     AuthModule,
     MenuModule,
     ReservacionesModule,
+    CocinaModule,
   ],
   providers: [
     {
       // Todo cerrado por defecto: las rutas públicas se abren con @Public().
       provide: APP_GUARD,
       useExisting: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useExisting: RolesGuard,
     },
   ],
 })

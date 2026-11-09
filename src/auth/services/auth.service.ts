@@ -55,6 +55,18 @@ export class AuthService {
     return user;
   }
 
+  async authenticateAccessToken(accessToken: string): Promise<User> {
+    const payload = await this.tokenService.verifyAccessToken(accessToken);
+
+    // Se relee el usuario en cada request para que una cuenta desactivada o
+    // eliminada deje de funcionar sin esperar a que expire el token.
+    const user = await this.usersService.findById(payload.sub);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('La cuenta no existe o está inactiva.');
+    }
+    return user;
+  }
+
   refresh(refreshToken: string): Promise<{ user: User; tokens: TokenPair }> {
     return this.tokenService.rotate(refreshToken);
   }
