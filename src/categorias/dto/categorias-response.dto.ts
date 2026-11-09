@@ -29,3 +29,28 @@ export class CategoriaDeshabilitadaResponseDto {
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   deshabilitadaEn!: Date | null;
 }
+
+export class CategoriaListadoResponseDto {
+  @ApiProperty({ example: 2 })
+  id!: number;
+
+  @ApiProperty({ example: 'Típicos' })
+  nombre!: string;
+
+  @ApiProperty({ example: true })
+  activa!: boolean;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  deshabilitadaEn!: Date | null;
+
+  @ApiProperty({ example: 3, description: 'Platillos activos asociados.' })
+  platillosActivos!: number;
+}
+
+export class PlatilloDeCategoriaResponseDto {
+  @ApiProperty({ example: 5 })
+  id!: number;
+
+  @ApiProperty({ example: 'Pupusa revuelta' })
+  nombre!: string;
+}

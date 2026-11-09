@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Param,
   ParseIntPipe,
   Patch,
@@ -23,9 +24,13 @@ import {
 import { Roles } from '@Auth/decorators';
 import { Rol } from '@PrismaClient';
 import { CategoriasService } from '../services/categorias.service.js';
-import { CategoriaDeshabilitadaResponseDto, CategoriaResponseDto } from '../dto/categorias-response.dto.js';
-import { GuardarCategoriaDto } from '../dto/guardar-categoria.dto.js';
-
+import {
+  CategoriaDeshabilitadaResponseDto,
+  CategoriaListadoResponseDto,
+  CategoriaResponseDto,
+  GuardarCategoriaDto,
+  PlatilloDeCategoriaResponseDto,
+} from '@Categorias/dto';
 
 @ApiTags('Categorías')
 @ApiBearerAuth()
@@ -79,5 +84,25 @@ export class CategoriasController {
     @Param('id', ParseIntPipe) id: number,
   ): Promise<CategoriaDeshabilitadaResponseDto> {
     return this.categoriasService.deshabilitar(id);
+  }
+
+  @Get()
+  @ApiOperation({
+    summary: 'Lista todas las categorías, incluidas las deshabilitadas',
+  })
+  @ApiOkResponse({ type: [CategoriaListadoResponseDto] })
+  listar(): Promise<CategoriaListadoResponseDto[]> {
+    return this.categoriasService.listar();
+  }
+
+  @Get(':id/platillos')
+  @ApiOperation({ summary: 'Lista los platillos activos de una categoría' })
+  @ApiOkResponse({ type: [PlatilloDeCategoriaResponseDto] })
+  @ApiBadRequestResponse({ description: 'El id no es un número entero.' })
+  @ApiNotFoundResponse({ description: 'La categoría no existe.' })
+  listarPlatillos(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<PlatilloDeCategoriaResponseDto[]> {
+    return this.categoriasService.listarPlatillos(id);
   }
 }

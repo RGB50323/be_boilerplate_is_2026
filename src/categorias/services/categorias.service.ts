@@ -76,4 +76,22 @@ export class CategoriasService {
     }
     return error instanceof Error ? error : new Error('Error inesperado.');
   }
+
+  async listar() {
+    const categorias = await this.repository.listar();
+    return categorias.map((categoria) => ({
+      id: categoria.id,
+      nombre: categoria.nombre,
+      activa: categoria.activa,
+      deshabilitadaEn: categoria.deshabilitadaEn,
+      platillosActivos: categoria._count.platillos,
+    }));
+  }
+
+  async listarPlatillos(categoriaId: number) {
+    if ((await this.repository.buscarPorId(categoriaId)) === null) {
+      throw new NotFoundException('La categoría no existe.');
+    }
+    return this.repository.listarPlatillosActivos(categoriaId);
+  }
 }

@@ -57,4 +57,25 @@ export class CategoriasRepository {
       select: { id: true, categoriaId: true },
     });
   }
+
+  listar() {
+    return this.prisma.categoria.findMany({
+      orderBy: { nombre: 'asc' },
+      select: {
+        id: true,
+        nombre: true,
+        activa: true,
+        deshabilitadaEn: true,
+        _count: { select: { platillos: { where: { activo: true } } } },
+      },
+    });
+  }
+
+  listarPlatillosActivos(categoriaId: number) {
+    return this.prisma.platillo.findMany({
+      where: { categoriaId, activo: true },
+      orderBy: { nombre: 'asc' },
+      select: { id: true, nombre: true },
+    });
+  }
 }
