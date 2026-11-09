@@ -77,7 +77,7 @@ export class MenuService {
       sucursalId,
       categorias: [...categorias.values()]
         .sort(porNombre)
-        .map((c) => ({ ...c, platillos: c.platillos.sort(porNombre) })),
+        .map((c) => ({ id: c.id, nombre: c.nombre, platillos: c.platillos.sort(porNombre) })),
     };
   }
 }
