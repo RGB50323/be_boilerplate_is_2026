@@ -10,6 +10,7 @@ import { UsersModule } from '@Users';
 import { NotificacionesModule } from '@Notificaciones';
 import { validateEnv } from '@Config';
 import { MenuModule } from './menu/menu.module.js';
+import { CategoriasModule } from '@Categorias';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { MenuModule } from './menu/menu.module.js';
     AuthModule,
     MenuModule,
     ReservacionesModule,
+    CategoriasModule
   ],
   providers: [
     {
