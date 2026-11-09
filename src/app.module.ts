@@ -7,7 +7,9 @@ import { HealthModule } from '@Health';
 import { PrismaModule } from '@Prisma';
 import { ReservacionesModule } from '@Reservaciones';
 import { UsersModule } from '@Users';
+import { NotificacionesModule } from '@Notificaciones';
 import { validateEnv } from '@Config';
+import { MenuModule } from './menu/menu.module.js';
 
 @Module({
   imports: [
@@ -20,7 +22,9 @@ import { validateEnv } from '@Config';
     PrismaModule,
     HealthModule,
     UsersModule,
+    NotificacionesModule,
     AuthModule,
+    MenuModule,
     ReservacionesModule,
   ],
   providers: [

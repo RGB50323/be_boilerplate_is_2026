@@ -453,6 +453,7 @@ model Pago {
   pedido      Pedido       @relation(fields: [pedidoId], references: [id])
   comprobante Comprobante?
 
+  @@unique([transaccionId, pedidoId])
   @@index([pedidoId, estado])
   @@index([estado, confirmadoEn])
   @@map("pago")
@@ -467,8 +468,10 @@ model Comprobante {
   archivoUrl    String?  @map("archivo_url") @db.VarChar(255)
 
   pedido Pedido @relation(fields: [ticketId], references: [id])
-  pago   Pago   @relation(fields: [transaccionId], references: [transaccionId])
+  // DB-17.1: garantiza que la transacción pertenece al mismo pedido.
+  pago   Pago   @relation(fields: [transaccionId, ticketId], references: [transaccionId, pedidoId])
 
+  @@unique([transaccionId, ticketId])
   @@index([ticketId])
   @@map("comprobante")
 }
