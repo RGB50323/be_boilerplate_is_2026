@@ -54,6 +54,8 @@
       "@PrismaClient": ["./src/generated/prisma/client.ts"],
       "@Categorias": ["./src/categorias/index.ts"],
       "@Categorias/*": ["./src/categorias/*/index.ts"],
+      "@Platillos": ["./src/platillos/index.ts"],
+      "@Platillos/*": ["./src/platillos/*/index.ts"],
     }
   }
 }
