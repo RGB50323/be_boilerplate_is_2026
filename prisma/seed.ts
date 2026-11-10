@@ -76,6 +76,144 @@ function imagen(nombre: string): string {
   return `https://placehold.co/400x400?text=${encodeURIComponent(nombre)}`;
 }
 
+const DIAS_DEMO = 45;
+const DESFASE_MS = 6 * 60 * 60 * 1000; // El Salvador: UTC-06:00
+
+function generadorDemo(semilla: number) {
+  let estado = semilla;
+  return () => {
+    estado = (estado + 0x6d2b79f5) | 0;
+    let t = Math.imul(estado ^ (estado >>> 15), 1 | estado);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+// Más pedidos al almuerzo y a la cena.
+function pesoHora(hora: number): number {
+  if (hora === 12 || hora === 13) return 3;
+  if (hora === 19 || hora === 20) return 2.5;
+  if (hora === 18 || hora === 14) return 1.5;
+  return 1;
+}
+
+async function crearPedidosDemo(sucursalId: Map<string, number>) {
+  const ahora = Date.now();
+
+  for (const [nombre, sId] of sucursalId) {
+    const existentes = await prisma.pedido.count({
+      where: { sucursalId: sId, numero: { startsWith: 'DEMO-' } },
+    });
+    if (existentes > 0) {
+      console.log(`Pedidos demo de ${nombre}: ya existen (${existentes}), se omiten.`);
+      continue;
+    }
+
+    const menu = await prisma.platilloSucursal.findMany({
+      where: { sucursalId: sId, platillo: { activo: true, categoria: { activa: true } } },
+      select: { platilloId: true, precio: true },
+      orderBy: { platilloId: 'asc' },
+    });
+    if (!menu.length) continue;
+
+    const azar = generadorDemo(sId * 7919);
+    let creados = 0;
+
+    for (let d = DIAS_DEMO - 1; d >= 0; d--) {
+      const diaLocal = new Date(ahora - DESFASE_MS - d * 24 * 60 * 60 * 1000);
+      const fecha = diaLocal.toISOString().slice(0, 10);
+      const horario = HORARIOS_SUCURSAL.find((h) => h.diaSemana === diaLocal.getUTCDay());
+      if (!horario) continue;
+
+      const apertura = Number(horario.apertura.slice(0, 2));
+      const cierre = Number(horario.cierre.slice(0, 2));
+      const horas = Array.from({ length: cierre - apertura }, (_, i) => apertura + i);
+      const pesoTotal = horas.reduce((t, h) => t + pesoHora(h), 0);
+      const finDeSemana = diaLocal.getUTCDay() === 5 || diaLocal.getUTCDay() === 6;
+      const pedidosDelDia = 8 + Math.floor(azar() * 8) + (finDeSemana ? 6 : 0);
+
+      for (let i = 0; i < pedidosDelDia; i++) {
+        let x = azar() * pesoTotal;
+        const hora = horas.find((h) => (x -= pesoHora(h)) < 0) ?? horas[0];
+        const minuto = Math.floor(azar() * 60);
+        const creadoEn = new Date(
+          `${fecha}T${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')}:00-06:00`,
+        );
+        // Solo pedidos que ya ocurrieron (con margen para la confirmación del pago).
+        if (creadoEn.getTime() > ahora - 60 * 60 * 1000) continue;
+
+        const lineas = new Map<number, { platilloId: number; cantidad: number; precioUnitario: number }>();
+        const cuantas = 1 + Math.floor(azar() * 4);
+        for (let l = 0; l < cuantas; l++) {
+          // Sesgo hacia los primeros platillos para que haya un ranking claro.
+          const item = menu[Math.floor(azar() ** 1.6 * menu.length)];
+          const previa = lineas.get(item.platilloId);
+          const cantidad = 1 + Math.floor(azar() * 3);
+          lineas.set(item.platilloId, {
+            platilloId: item.platilloId,
+            cantidad: (previa?.cantidad ?? 0) + cantidad,
+            precioUnitario: Number(item.precio),
+          });
+        }
+        const detalles = [...lineas.values()];
+        const subtotal = r2(detalles.reduce((t, l) => t + l.cantidad * l.precioUnitario, 0));
+        const descuentos = azar() < 0.15 ? r2(subtotal * 0.1) : 0;
+        const neto = subtotal - descuentos;
+        const impuestos = r2(neto * 0.13);
+        const tipo = azar() < 0.7 ? 'MESA' : 'LLEVAR';
+        const propina = tipo === 'MESA' ? r2(neto * 0.1) : 0;
+        const total = r2(neto + impuestos + propina);
+
+        const sorteo = azar();
+        const estadoPago =
+          sorteo < 0.86 ? 'CONFIRMADO' : sorteo < 0.92 ? 'PENDIENTE' : sorteo < 0.96 ? 'REEMBOLSADO' : 'RECHAZADO';
+        const estadoPedido =
+          estadoPago === 'CONFIRMADO' ? 'ENTREGADO' : estadoPago === 'REEMBOLSADO' ? 'CANCELADO' : 'PENDIENTE_PAGO';
+        const confirmadoEn =
+          estadoPago === 'CONFIRMADO' || estadoPago === 'REEMBOLSADO'
+            ? new Date(creadoEn.getTime() + (5 + Math.floor(azar() * 35)) * 60 * 1000)
+            : null;
+
+        creados++;
+        const clave = `${sId}-${creados}`;
+        await prisma.pedido.create({
+          data: {
+            numero: `DEMO-${String(creados).padStart(5, '0')}`,
+            tipo,
+            estado: estadoPedido,
+            sucursalId: sId,
+            subtotal,
+            descuentos,
+            impuestos,
+            propina,
+            total,
+            creadoEn,
+            detalles: { create: detalles },
+            pagos: {
+              create: {
+                idempotencyKey: `demo-${clave}`,
+                transaccionId: estadoPago === 'PENDIENTE' ? null : `demo-tx-${clave}`,
+                monto: total,
+                estado: estadoPago,
+                metodo: 'TARJETA',
+                creadoEn,
+                confirmadoEn,
+                reembolsadoEn:
+                  estadoPago === 'REEMBOLSADO' && confirmadoEn
+                    ? new Date(confirmadoEn.getTime() + 30 * 60 * 1000)
+                    : null,
+              },
+            },
+          },
+        });
+      }
+    }
+    console.log(`Pedidos demo de ${nombre}: ${creados} creados.`);
+  }
+}
+
 async function main() {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('El seed no se ejecuta en producción.');
@@ -181,6 +319,8 @@ async function main() {
       },
     });
   }
+
+  await crearPedidosDemo(sucursalId);
 
   console.log('Seed listo.');
   console.log(`Sucursales: ${SUCURSALES.map((s) => s.nombre).join(', ')}`);

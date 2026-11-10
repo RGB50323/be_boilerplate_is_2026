@@ -47,6 +47,8 @@
       "@Health/*": ["./src/health/*/index.ts"],
       "@Reservaciones": ["./src/reservaciones/index.ts"],
       "@Reservaciones/*": ["./src/reservaciones/*/index.ts"],
+      "@Dashboard": ["./src/dashboard/index.ts"],
+      "@Dashboard/*": ["./src/dashboard/*/index.ts"],
       "@Prisma": ["./src/prisma/index.ts"],
       "@Prisma/*": ["./src/prisma/*/index.ts"],
       "@Common/*": ["./src/common/*/index.ts"],
