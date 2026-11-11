@@ -16,3 +16,8 @@ export class PlatilloDeshabilitadoResponseDto {
   @ApiProperty({ example: 10 }) id!: number;
   @ApiProperty({ example: false }) activo!: boolean;
 }
+
+export class ImagenPlatilloResponseDto {
+  @ApiProperty({ example: '/uploads/platillos/3f2a....png' })
+  imagenUrl!: string;
+}

@@ -28,6 +28,21 @@ import {
   PlatilloResponseDto,
 } from '../dto/index.js';
 import { PlatillosService } from '../services/platillos.service.js';
+import { UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBadRequestResponse,
+  ApiBody,
+  ApiConsumes,
+  ApiPayloadTooLargeResponse,
+  ApiUnsupportedMediaTypeResponse,
+} from '@nestjs/swagger';
+import { ImagenPlatilloResponseDto } from '../dto/index.js';
+import {
+  type ArchivoSubido,
+  ImagenesPlatilloService,
+  TAMANO_MAXIMO_IMAGEN,
+} from '../services/imagenes-platillo.service.js';
 
 @ApiTags('Platillos')
 @ApiBearerAuth()
@@ -38,7 +53,10 @@ import { PlatillosService } from '../services/platillos.service.js';
 @Roles(Rol.GERENTE)
 @Controller()
 export class PlatillosController {
-  constructor(private readonly service: PlatillosService) {}
+  constructor(
+    private readonly service: PlatillosService,
+    private readonly imagenes: ImagenesPlatilloService,
+  ) {}
 
   @Get('sucursales/:sucursalId/platillos')
   @ApiOperation({
@@ -64,6 +82,31 @@ export class PlatillosController {
     @CurrentUser() usuario: User,
   ): Promise<PlatilloResponseDto> {
     return this.service.crear(sucursalId, dto, usuario.sucursalId);
+  }
+
+  @Post('platillos/imagen')
+  @UseInterceptors(
+    FileInterceptor('imagen', { limits: { fileSize: TAMANO_MAXIMO_IMAGEN } }),
+  )
+  @ApiOperation({
+    summary: 'Subir la imagen de un platillo (JPG o PNG, máx. 2 MB)',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['imagen'],
+      properties: { imagen: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiCreatedResponse({ type: ImagenPlatilloResponseDto })
+  @ApiBadRequestResponse({ description: 'No se adjuntó ninguna imagen' })
+  @ApiPayloadTooLargeResponse({ description: 'La imagen supera los 2 MB' })
+  @ApiUnsupportedMediaTypeResponse({ description: 'No es JPG ni PNG' })
+  subirImagen(
+    @UploadedFile() archivo: ArchivoSubido | undefined,
+  ): Promise<ImagenPlatilloResponseDto> {
+    return this.imagenes.guardar(archivo);
   }
 
   @Put('platillos/:id')

@@ -18,7 +18,7 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false,
-    "types": ["vitest/globals", "node"],
+    "types": ["vitest/globals", "node", "multer"],
     // Alias por módulo. Cada entrada apunta al barrel (index.ts) de la carpeta,
     // de modo que `@Auth/services` resuelve a `src/auth/services/index.ts`.
     //
