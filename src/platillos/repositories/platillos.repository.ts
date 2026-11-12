@@ -109,4 +109,12 @@ export class PlatillosRepository {
       select: { id: true, activo: true },
     });
   }
+
+  habilitar(id: number) {
+    return this.prisma.platillo.update({
+      where: { id },
+      data: { activo: true },
+      select: { id: true, activo: true },
+    });
+  }
 }

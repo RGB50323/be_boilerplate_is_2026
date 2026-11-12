@@ -136,4 +136,17 @@ export class PlatillosController {
   ): Promise<PlatilloDeshabilitadoResponseDto> {
     return this.service.deshabilitar(id, usuario.sucursalId);
   }
+
+  @Patch('platillos/:id/habilitar')
+  @ApiOperation({ summary: 'Volver a habilitar un platillo deshabilitado' })
+  @ApiOkResponse({ type: PlatilloDeshabilitadoResponseDto })
+  @ApiNotFoundResponse({ description: 'El platillo o la categoría no existe' })
+  @ApiConflictResponse({ description: 'El platillo ya está habilitado' })
+  @ApiUnprocessableEntityResponse({ description: 'Categoría deshabilitada' })
+  habilitar(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() usuario: User,
+  ): Promise<PlatilloDeshabilitadoResponseDto> {
+    return this.service.habilitar(id, usuario.sucursalId);
+  }
 }

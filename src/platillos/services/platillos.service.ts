@@ -90,6 +90,15 @@ export class PlatillosService {
     return this.repository.deshabilitar(id);
   }
 
+  async habilitar(id: number, sucursalGerente: number | null) {
+    const platillo = await this.obtenerPropio(id, sucursalGerente);
+    if (platillo.activo) {
+      throw new ConflictException('El platillo ya está habilitado.');
+    }
+    await this.verificarCategoria(platillo.categoriaId, true);
+    return this.repository.habilitar(id);
+  }
+
   private verificarSucursal(
     sucursalId: number,
     sucursalGerente: number | null,

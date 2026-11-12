@@ -16,13 +16,16 @@ const repository = {
   buscarPropio: vi.fn(),
   buscarCategoria: vi.fn(),
   deshabilitar: vi.fn(),
+  habilitar: vi.fn(),
 };
 
 const dto: GuardarPlatilloDto = {
   nombre: 'Pupusa revuelta',
+  descripcion: 'Con queso',
   precio: 1.25,
   categoriaId: 2,
   disponibilidad: 40,
+  imagenUrl: '/uploads/platillos/p.png',
 };
 
 function registro(extra: Record<string, unknown> = {}) {
@@ -284,6 +287,66 @@ describe('PlatillosService', () => {
         ForbiddenException,
       );
       expect(repository.deshabilitar).not.toHaveBeenCalled();
+    });
+  });
+  describe('habilitar', () => {
+    it('habilita un platillo deshabilitado', async () => {
+      repository.buscarPropio.mockResolvedValue(propio({ activo: false }));
+      repository.buscarCategoria.mockResolvedValue({ id: 2, activa: true });
+      repository.habilitar.mockResolvedValue({ id: 10, activo: true });
+
+      const resultado = await service.habilitar(10, 1);
+
+      expect(resultado).toEqual({ id: 10, activo: true });
+      expect(repository.habilitar).toHaveBeenCalledWith(10);
+    });
+
+    it('responde 409 si ya estaba habilitado', async () => {
+      repository.buscarPropio.mockResolvedValue(propio());
+
+      const promesa = service.habilitar(10, 1);
+
+      await expect(promesa).rejects.toBeInstanceOf(ConflictException);
+      await expect(promesa).rejects.toThrow('El platillo ya está habilitado.');
+      expect(repository.habilitar).not.toHaveBeenCalled();
+    });
+
+    it('responde 422 si su categoría está deshabilitada', async () => {
+      repository.buscarPropio.mockResolvedValue(propio({ activo: false }));
+      repository.buscarCategoria.mockResolvedValue({ id: 2, activa: false });
+
+      const promesa = service.habilitar(10, 1);
+
+      await expect(promesa).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+      expect(repository.habilitar).not.toHaveBeenCalled();
+    });
+
+    it('responde 404 si el platillo no existe', async () => {
+      repository.buscarPropio.mockResolvedValue(null);
+
+      await expect(service.habilitar(10, 1)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('responde 403 si el platillo es de otra sucursal', async () => {
+      repository.buscarPropio.mockResolvedValue(
+        propio({ activo: false, sucursales: [] }),
+      );
+
+      await expect(service.habilitar(10, 1)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(repository.habilitar).not.toHaveBeenCalled();
+    });
+
+    it('responde 403 si el gerente no tiene sucursal', async () => {
+      await expect(service.habilitar(10, null)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(repository.buscarPropio).not.toHaveBeenCalled();
     });
   });
 });
