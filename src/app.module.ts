@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { PagosModule } from '@Pagos';
 import { AuthModule } from '@Auth';
 import { JwtAuthGuard } from '@Auth/guards';
 import { HealthModule } from '@Health';
@@ -26,6 +27,7 @@ import { MenuModule } from './menu/menu.module.js';
     AuthModule,
     MenuModule,
     ReservacionesModule,
+    PagosModule,
   ],
   providers: [
     {
