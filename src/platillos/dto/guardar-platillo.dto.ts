@@ -1,29 +1,30 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsInt,
   IsNotEmpty,
   IsNumber,
-  IsOptional,
   IsString,
   MaxLength,
   Min,
 } from 'class-validator';
 
+const recortar = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+
 export class GuardarPlatilloDto {
   @ApiProperty({ example: 'Pupusa revuelta', maxLength: 120 })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(recortar)
   @IsString({ message: 'El nombre debe ser texto.' })
   @IsNotEmpty({ message: 'El nombre del platillo es obligatorio.' })
   @MaxLength(120, { message: 'El nombre no puede superar los 120 caracteres.' })
   nombre!: string;
 
-  @ApiPropertyOptional({ example: 'Con queso y chicharrón' })
-  @IsOptional()
+  @ApiProperty({ example: 'Con queso y chicharrón' })
+  @Transform(recortar)
   @IsString({ message: 'La descripción debe ser texto.' })
-  descripcion?: string;
+  @IsNotEmpty({ message: 'La descripción es obligatoria.' })
+  descripcion!: string;
 
   @ApiProperty({ example: 1.25 })
   @IsNumber(
@@ -48,9 +49,9 @@ export class GuardarPlatilloDto {
   @Min(0, { message: 'La disponibilidad no puede ser negativa.' })
   disponibilidad!: number;
 
-  @ApiPropertyOptional({ example: '/img/10.jpg', maxLength: 255 })
-  @IsOptional()
+  @ApiProperty({ example: '/uploads/platillos/10.png', maxLength: 255 })
   @IsString({ message: 'La imagen debe ser una ruta de texto.' })
+  @IsNotEmpty({ message: 'La imagen es obligatoria.' })
   @MaxLength(255, { message: 'La ruta de la imagen es demasiado larga.' })
-  imagenUrl?: string;
+  imagenUrl!: string;
 }

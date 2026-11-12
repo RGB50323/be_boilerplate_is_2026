@@ -4,9 +4,11 @@ import { GuardarPlatilloDto } from './guardar-platillo.dto.js';
 
 const valido = {
   nombre: 'Pupusa revuelta',
+  descripcion: 'Con queso',
   precio: 1.25,
   categoriaId: 2,
   disponibilidad: 40,
+  imagenUrl: '/uploads/platillos/p.png',
 };
 
 async function errores(datos: Record<string, unknown>): Promise<string[]> {
@@ -16,25 +18,18 @@ async function errores(datos: Record<string, unknown>): Promise<string[]> {
 }
 
 describe('GuardarPlatilloDto', () => {
-  it('acepta un platillo válido sin campos opcionales', async () => {
+  it('acepta un platillo válido', async () => {
     expect(await errores(valido)).toEqual([]);
   });
 
-  it('acepta descripción e imagen opcionales', async () => {
-    const datos = {
-      ...valido,
-      descripcion: 'Con queso',
-      imagenUrl: '/img/p.jpg',
-    };
-    expect(await errores(datos)).toEqual([]);
-  });
-
-  it('recorta los espacios del nombre', () => {
+  it('recorta los espacios del nombre y de la descripción', () => {
     const dto = plainToInstance(GuardarPlatilloDto, {
       ...valido,
       nombre: '  Pupusa  ',
+      descripcion: '  Con queso  ',
     });
     expect(dto.nombre).toBe('Pupusa');
+    expect(dto.descripcion).toBe('Con queso');
   });
 
   it('rechaza un nombre vacío', async () => {
@@ -59,6 +54,19 @@ describe('GuardarPlatilloDto', () => {
   it('rechaza un nombre de más de 120 caracteres', async () => {
     expect(await errores({ ...valido, nombre: 'a'.repeat(121) })).toContain(
       'El nombre no puede superar los 120 caracteres.',
+    );
+  });
+
+  it('rechaza una descripción vacía, de espacios o ausente', async () => {
+    const { descripcion: _descripcion, ...sinDescripcion } = valido;
+    expect(await errores({ ...valido, descripcion: '' })).toContain(
+      'La descripción es obligatoria.',
+    );
+    expect(await errores({ ...valido, descripcion: '   ' })).toContain(
+      'La descripción es obligatoria.',
+    );
+    expect(await errores(sinDescripcion)).toContain(
+      'La descripción es obligatoria.',
     );
   });
 
@@ -92,7 +100,7 @@ describe('GuardarPlatilloDto', () => {
   });
 
   it('rechaza una disponibilidad ausente o decimal', async () => {
-    const { disponibilidad: _d, ...sinDisponibilidad } = valido;
+    const { disponibilidad: _disponibilidad, ...sinDisponibilidad } = valido;
     expect(await errores(sinDisponibilidad)).toContain(
       'La disponibilidad es obligatoria y debe ser un número entero.',
     );
@@ -106,13 +114,21 @@ describe('GuardarPlatilloDto', () => {
   });
 
   it('rechaza una categoría ausente o menor a 1', async () => {
-    const { categoriaId: _c, ...sinCategoria } = valido;
+    const { categoriaId: _categoriaId, ...sinCategoria } = valido;
     expect(await errores(sinCategoria)).toContain(
       'La categoría es obligatoria.',
     );
     expect(await errores({ ...valido, categoriaId: 0 })).toContain(
       'La categoría es obligatoria.',
     );
+  });
+
+  it('rechaza una imagen vacía o ausente', async () => {
+    const { imagenUrl: _imagenUrl, ...sinImagen } = valido;
+    expect(await errores({ ...valido, imagenUrl: '' })).toContain(
+      'La imagen es obligatoria.',
+    );
+    expect(await errores(sinImagen)).toContain('La imagen es obligatoria.');
   });
 
   it('rechaza una ruta de imagen de más de 255 caracteres', async () => {
