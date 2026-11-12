@@ -18,7 +18,7 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false,
-    "types": ["vitest/globals", "node"],
+    "types": ["vitest/globals", "node", "multer"],
     // Alias por módulo. Cada entrada apunta al barrel (index.ts) de la carpeta,
     // de modo que `@Auth/services` resuelve a `src/auth/services/index.ts`.
     //
@@ -54,6 +54,8 @@
       "@PrismaClient": ["./src/generated/prisma/client.ts"],
       "@Categorias": ["./src/categorias/index.ts"],
       "@Categorias/*": ["./src/categorias/*/index.ts"],
+      "@Platillos": ["./src/platillos/index.ts"],
+      "@Platillos/*": ["./src/platillos/*/index.ts"],
     }
   }
 }

@@ -11,6 +11,7 @@ import { NotificacionesModule } from '@Notificaciones';
 import { validateEnv } from '@Config';
 import { MenuModule } from './menu/menu.module.js';
 import { CategoriasModule } from '@Categorias';
+import { PlatillosModule } from '@Platillos';
 
 @Module({
   imports: [
@@ -27,7 +28,8 @@ import { CategoriasModule } from '@Categorias';
     AuthModule,
     MenuModule,
     ReservacionesModule,
-    CategoriasModule
+    CategoriasModule,
+    PlatillosModule
   ],
   providers: [
     {
