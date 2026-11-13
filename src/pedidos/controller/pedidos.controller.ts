@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   Param,
   ParseIntPipe,
   Patch,
@@ -28,6 +29,7 @@ import {
   CrearPedidoDto,
   ItemsAgregadosResponseDto,
   PedidoCreadoResponseDto,
+  PedidoDetalleResponseDto,
   PedidoTotalResponseDto,
 } from '../dto/index.js';
 import { PedidosService } from '../services/pedidos.service.js';
@@ -110,5 +112,16 @@ export class PedidosController {
     @CurrentUser() usuario: User,
   ): Promise<PedidoTotalResponseDto> {
     return this.service.quitarItem(id, itemId, usuario);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Ver un pedido con sus platillos' })
+  @ApiOkResponse({ type: PedidoDetalleResponseDto })
+  @ApiNotFoundResponse({ description: 'El pedido no existe' })
+  obtener(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() usuario: User,
+  ): Promise<PedidoDetalleResponseDto> {
+    return this.service.obtener(id, usuario);
   }
 }

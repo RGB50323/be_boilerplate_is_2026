@@ -152,6 +152,54 @@ export class PedidosRepository {
       select: { id: true, platilloId: true, cantidad: true, estado: true },
     });
   }
+  
+  listarMesas(sucursalId: number) {
+    return this.prisma.mesa.findMany({
+      where: { sucursalId },
+      orderBy: { numero: 'asc' },
+      select: {
+        id: true,
+        numero: true,
+        capacidad: true,
+        zona: true,
+        activa: true,
+      },
+    });
+  }
+
+  buscarPedidosAbiertos(mesaIds: number[]) {
+    return this.prisma.pedido.findMany({
+      where: { mesaId: { in: mesaIds }, estado: { notIn: ESTADOS_CERRADOS } },
+      select: { id: true, mesaId: true },
+    });
+  }
+
+  buscarDetalle(id: number) {
+    return this.prisma.pedido.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        numero: true,
+        estado: true,
+        mesaId: true,
+        sucursalId: true,
+        total: true,
+        creadoEn: true,
+        detalles: {
+          orderBy: { id: 'asc' },
+          select: {
+            id: true,
+            platilloId: true,
+            cantidad: true,
+            precioUnitario: true,
+            nota: true,
+            estado: true,
+            platillo: { select: { nombre: true } },
+          },
+        },
+      },
+    });
+  }
 
   crear(datos: DatosPedido) {
     const { sucursalId, mesaId, meseroId, total, items } = datos;

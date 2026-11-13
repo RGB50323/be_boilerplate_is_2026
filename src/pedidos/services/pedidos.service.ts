@@ -14,6 +14,8 @@ import type {
   ItemsAgregadosResponseDto,
   PedidoCreadoResponseDto,
   PedidoTotalResponseDto,
+  MesaResponseDto,
+  PedidoDetalleResponseDto
 } from '../dto/index.js';
 import {
   DisponibilidadInsuficienteError,
@@ -28,6 +30,7 @@ import {
 const SIN_PERMISO = 'No tienes permiso para registrar pedidos en esta mesa.';
 const SIN_PERMISO_PEDIDO = 'No tienes permiso para modificar este pedido.';
 const ITEM_LISTO = 'Este platillo ya está listo y no se puede modificar.';
+const SIN_PERMISO_VER = 'No tienes permiso para ver este recurso.';
 
 @Injectable()
 export class PedidosService {
@@ -153,6 +156,59 @@ export class PedidosService {
     } catch (error) {
       throw this.traducir(error);
     }
+  }
+
+  async listarMesas(
+    sucursalId: number,
+    usuario: User,
+  ): Promise<MesaResponseDto[]> {
+    if (usuario.sucursalId !== sucursalId) {
+      throw new ForbiddenException(SIN_PERMISO_VER);
+    }
+
+    const mesas = await this.repository.listarMesas(sucursalId);
+    const abiertos = await this.repository.buscarPedidosAbiertos(
+      mesas.map((m) => m.id),
+    );
+    const porMesa = new Map(abiertos.map((p) => [p.mesaId, p.id]));
+
+    return mesas.map((m) => ({
+      id: m.id,
+      numero: m.numero,
+      capacidad: m.capacidad,
+      zona: m.zona,
+      activa: m.activa,
+      pedidoAbiertoId: porMesa.get(m.id) ?? null,
+    }));
+  }
+
+  async obtener(id: number, usuario: User): Promise<PedidoDetalleResponseDto> {
+    const sucursalId = usuario.sucursalId;
+    if (sucursalId === null) throw new ForbiddenException(SIN_PERMISO_VER);
+
+    const pedido = await this.repository.buscarDetalle(id);
+    if (pedido === null) throw new NotFoundException('El pedido no existe.');
+    if (pedido.sucursalId !== sucursalId) {
+      throw new ForbiddenException(SIN_PERMISO_VER);
+    }
+
+    return {
+      pedidoId: pedido.id,
+      numero: pedido.numero,
+      estado: pedido.estado,
+      mesaId: pedido.mesaId,
+      total: pedido.total.toNumber(),
+      creadoEn: pedido.creadoEn.toISOString(),
+      items: pedido.detalles.map((d) => ({
+        itemId: d.id,
+        platilloId: d.platilloId,
+        nombre: d.platillo.nombre,
+        cantidad: d.cantidad,
+        precioUnitario: d.precioUnitario.toNumber(),
+        nota: d.nota,
+        estado: d.estado,
+      })),
+    };
   }
 
   private async obtenerPedidoAbierto(id: number, usuario: User) {
