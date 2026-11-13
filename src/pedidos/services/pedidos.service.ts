@@ -1,19 +1,33 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma, type User } from '@PrismaClient';
-import type { CrearPedidoDto, PedidoCreadoResponseDto } from '../dto/index.js';
+import { EstadoItem, Prisma, type User } from '@PrismaClient';
+import type {
+  AgregarItemsDto,
+  CambiarItemDto,
+  CrearPedidoDto,
+  ItemsAgregadosResponseDto,
+  PedidoCreadoResponseDto,
+  PedidoTotalResponseDto,
+} from '../dto/index.js';
 import {
   DisponibilidadInsuficienteError,
+  ESTADOS_CERRADOS,
+  ItemNoModificableError,
+  PedidoSinItemsError,
   PedidosRepository,
+  type ItemExistente,
   type ItemNuevo,
 } from '../repositories/pedidos.repository.js';
 
 const SIN_PERMISO = 'No tienes permiso para registrar pedidos en esta mesa.';
+const SIN_PERMISO_PEDIDO = 'No tienes permiso para modificar este pedido.';
+const ITEM_LISTO = 'Este platillo ya está listo y no se puede modificar.';
 
 @Injectable()
 export class PedidosService {
@@ -60,25 +74,141 @@ export class PedidosService {
         creadoEn: pedido.creadoEn.toISOString(),
       };
     } catch (error) {
-      if (error instanceof DisponibilidadInsuficienteError) {
-        throw new UnprocessableEntityException(
-          'Un platillo se quedó sin disponibilidad. Revisa el pedido.',
-        );
-      }
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw this.mesaOcupada();
-      }
-      throw error;
+      throw this.traducir(error);
     }
+  }
+
+  async agregarItems(
+    pedidoId: number,
+    dto: AgregarItemsDto,
+    usuario: User,
+  ): Promise<ItemsAgregadosResponseDto> {
+    const pedido = await this.obtenerPedidoAbierto(pedidoId, usuario);
+    const items = await this.armarItems(dto.items, pedido.sucursalId);
+
+    try {
+      const { total, agregados } = await this.repository.agregarItems(
+        pedido.id,
+        pedido.sucursalId,
+        items,
+      );
+      return {
+        pedidoId: pedido.id,
+        total: total.toNumber(),
+        itemsAgregados: agregados.map((a) => ({
+          itemId: a.id,
+          platilloId: a.platilloId,
+          cantidad: a.cantidad,
+          estado: a.estado,
+        })),
+      };
+    } catch (error) {
+      throw this.traducir(error);
+    }
+  }
+
+  async cambiarItem(
+    pedidoId: number,
+    itemId: number,
+    dto: CambiarItemDto,
+    usuario: User,
+  ): Promise<PedidoTotalResponseDto> {
+    if (dto.cantidad === undefined && dto.nota === undefined) {
+      throw new BadRequestException('Indica la cantidad o la nota a cambiar.');
+    }
+    const pedido = await this.obtenerPedidoAbierto(pedidoId, usuario);
+    const item = await this.obtenerItemPendiente(pedido.id, itemId);
+
+    try {
+      const total = await this.repository.cambiarItem(
+        pedido.id,
+        pedido.sucursalId,
+        item,
+        {
+          cantidad: dto.cantidad,
+          nota: dto.nota === undefined ? undefined : dto.nota || null,
+        },
+      );
+      return { pedidoId: pedido.id, total: total.toNumber() };
+    } catch (error) {
+      throw this.traducir(error);
+    }
+  }
+
+  async quitarItem(
+    pedidoId: number,
+    itemId: number,
+    usuario: User,
+  ): Promise<PedidoTotalResponseDto> {
+    const pedido = await this.obtenerPedidoAbierto(pedidoId, usuario);
+    const item = await this.obtenerItemPendiente(pedido.id, itemId);
+
+    try {
+      const total = await this.repository.quitarItem(
+        pedido.id,
+        pedido.sucursalId,
+        item,
+      );
+      return { pedidoId: pedido.id, total: total.toNumber() };
+    } catch (error) {
+      throw this.traducir(error);
+    }
+  }
+
+  private async obtenerPedidoAbierto(id: number, usuario: User) {
+    const sucursalId = usuario.sucursalId;
+    if (sucursalId === null) throw new ForbiddenException(SIN_PERMISO_PEDIDO);
+
+    const pedido = await this.repository.buscarPedido(id);
+    if (pedido === null) throw new NotFoundException('El pedido no existe.');
+    if (pedido.sucursalId !== sucursalId) {
+      throw new ForbiddenException(SIN_PERMISO_PEDIDO);
+    }
+    if (ESTADOS_CERRADOS.includes(pedido.estado)) {
+      throw new ConflictException('El pedido ya está cerrado.');
+    }
+    return pedido;
+  }
+
+  private async obtenerItemPendiente(
+    pedidoId: number,
+    itemId: number,
+  ): Promise<ItemExistente> {
+    const item = await this.repository.buscarItem(pedidoId, itemId);
+    if (item === null) {
+      throw new NotFoundException('El platillo del pedido no existe.');
+    }
+    if (item.estado !== EstadoItem.PENDIENTE) {
+      throw new ConflictException(ITEM_LISTO);
+    }
+    return item;
   }
 
   private mesaOcupada() {
     return new ConflictException(
       'La mesa ya tiene un pedido abierto. Agrega los platillos a ese pedido.',
     );
+  }
+
+  private traducir(error: unknown): unknown {
+    if (error instanceof DisponibilidadInsuficienteError) {
+      return new UnprocessableEntityException(
+        'Un platillo se quedó sin disponibilidad. Revisa el pedido.',
+      );
+    }
+    if (error instanceof ItemNoModificableError) {
+      return new ConflictException(ITEM_LISTO);
+    }
+    if (error instanceof PedidoSinItemsError) {
+      return new ConflictException('El pedido debe conservar al menos un platillo.');
+    }
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      return this.mesaOcupada();
+    }
+    return error;
   }
 
   private async armarItems(
