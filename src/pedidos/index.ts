@@ -1,0 +1,1 @@
+export { PedidosModule } from './pedidos.module.js';
