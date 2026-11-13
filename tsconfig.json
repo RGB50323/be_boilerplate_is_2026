@@ -49,6 +49,8 @@
       "@Reservaciones/*": ["./src/reservaciones/*/index.ts"],
       "@Prisma": ["./src/prisma/index.ts"],
       "@Prisma/*": ["./src/prisma/*/index.ts"],
+      "@Cocina": ["./src/cocina/index.ts"],
+      "@Cocina/*": ["./src/cocina/*/index.ts"],
       "@Common/*": ["./src/common/*/index.ts"],
       "@Config": ["./src/config/index.ts"],
       "@PrismaClient": ["./src/generated/prisma/client.ts"],
