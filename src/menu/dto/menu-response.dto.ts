@@ -18,6 +18,12 @@ export class PlatilloMenuDto {
 
   @ApiProperty({ example: 40 })
   disponibilidad!: number;
+
+  @ApiProperty({ type: Number, nullable: true, example: 4.6 })
+  promedio!: number | null;
+
+  @ApiProperty({ example: 23 })
+  totalResenas!: number;
 }
 
 export class CategoriaMenuDto {

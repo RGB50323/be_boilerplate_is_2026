@@ -23,12 +23,17 @@ const fila = (
   }) as unknown as Fila;
 
 describe('MenuService', () => {
-  const repo = { sucursalExiste: vi.fn(), findVisibles: vi.fn() };
+  const repo = {
+    sucursalExiste: vi.fn(),
+    findVisibles: vi.fn(),
+    resumenResenas: vi.fn(),
+  };
   let service: MenuService;
 
   beforeEach(() => {
     repo.sucursalExiste.mockReset().mockResolvedValue(true);
     repo.findVisibles.mockReset().mockResolvedValue([]);
+    repo.resumenResenas.mockReset().mockResolvedValue([]);
     service = new MenuService(repo as unknown as MenuRepository);
   });
 
@@ -68,9 +73,10 @@ describe('MenuService', () => {
       'Entradas',
       'Platillos principales',
     ]);
-    expect(
-      menu.categorias[2].platillos.map((p) => p.nombre),
-    ).toEqual(['Costillas BBQ', 'Pupusa revuelta']);
+    expect(menu.categorias[2].platillos.map((p) => p.nombre)).toEqual([
+      'Costillas BBQ',
+      'Pupusa revuelta',
+    ]);
   });
 
   it.each(['PUPÚ', 'pupu', 'Pupusa'])(
@@ -95,7 +101,9 @@ describe('MenuService', () => {
   });
 
   it('sin coincidencias devuelve categorias vacío, no un error', async () => {
-    repo.findVisibles.mockResolvedValue([fila(5, 'Pupusa revuelta', principales)]);
+    repo.findVisibles.mockResolvedValue([
+      fila(5, 'Pupusa revuelta', principales),
+    ]);
     await expect(service.obtenerMenu(1, { q: 'zzz' })).resolves.toEqual({
       sucursalId: 1,
       categorias: [],
@@ -122,5 +130,41 @@ describe('MenuService', () => {
       precioMin: 1,
       precioMax: 5,
     });
+  });
+
+  it('incluye el promedio a un decimal y el total de reseñas de cada platillo', async () => {
+    repo.findVisibles.mockResolvedValue([
+      fila(5, 'Pupusa revuelta', principales),
+      fila(9, 'Horchata', bebidas),
+    ]);
+    repo.resumenResenas.mockResolvedValue([
+      { platilloId: 5, _avg: { estrellas: 4.25 }, _count: { _all: 4 } },
+    ]);
+
+    const menu = await service.obtenerMenu(1, {});
+
+    expect(repo.resumenResenas).toHaveBeenCalledWith([5, 9]);
+    expect(menu.categorias[1].platillos[0]).toMatchObject({
+      promedio: 4.3,
+      totalResenas: 4,
+    });
+    expect(menu.categorias[0].platillos[0]).toMatchObject({
+      promedio: null,
+      totalResenas: 0,
+    });
+  });
+
+  it('solo consulta reseñas de los platillos que pasan la búsqueda', async () => {
+    repo.findVisibles.mockResolvedValue([
+      fila(5, 'Pupusa revuelta', principales),
+      fila(9, 'Horchata', bebidas),
+    ]);
+    await service.obtenerMenu(1, { q: 'pupu' });
+    expect(repo.resumenResenas).toHaveBeenCalledWith([5]);
+  });
+
+  it('no consulta reseñas si no hay platillos', async () => {
+    await service.obtenerMenu(1, {});
+    expect(repo.resumenResenas).not.toHaveBeenCalled();
   });
 });
