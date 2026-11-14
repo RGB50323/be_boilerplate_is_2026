@@ -58,6 +58,7 @@ export class PlatillosController {
     private readonly imagenes: ImagenesPlatilloService,
   ) {}
 
+  @Roles(Rol.GERENTE, Rol.MESERO)
   @Get('sucursales/:sucursalId/platillos')
   @ApiOperation({
     summary: 'Listar los platillos de la sucursal (incluye deshabilitados)',

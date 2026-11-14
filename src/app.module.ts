@@ -14,6 +14,7 @@ import { validateEnv } from '@Config';
 import { MenuModule } from './menu/menu.module.js';
 import { CategoriasModule } from '@Categorias';
 import { PlatillosModule } from '@Platillos';
+import { PedidosModule } from '@Pedidos';
 
 @Module({
   imports: [
@@ -33,7 +34,8 @@ import { PlatillosModule } from '@Platillos';
     ReservacionesModule,
     CocinaModule,
     CategoriasModule,
-    PlatillosModule
+    PlatillosModule,
+    PedidosModule
   ],
   providers: [
     {
