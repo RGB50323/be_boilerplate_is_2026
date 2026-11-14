@@ -31,8 +31,9 @@ export class ResenasService {
       throw new NotFoundException('El platillo no existe o está deshabilitado');
     }
 
-    const [resumen, filas] = await Promise.all([
+    const [resumen, grupos, filas] = await Promise.all([
       this.repository.resumen(platilloId),
+      this.repository.distribucion(platilloId),
       this.repository.findPagina(
         platilloId,
         (pagina - 1) * RESENAS_POR_PAGINA,
@@ -40,10 +41,15 @@ export class ResenasService {
       ),
     ]);
     const total = resumen._count._all;
+    const distribucion = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const g of grupos) {
+      distribucion[g.estrellas as keyof typeof distribucion] = g._count._all;
+    }
 
     return {
       promedio: redondearPromedio(resumen._avg.estrellas),
       total,
+      distribucion,
       pagina,
       totalPaginas: Math.ceil(total / RESENAS_POR_PAGINA),
       resenas: filas.map((r) => ({

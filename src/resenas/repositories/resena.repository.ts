@@ -23,6 +23,14 @@ export class ResenaRepository {
     });
   }
 
+  distribucion(platilloId: number) {
+    return this.prisma.resena.groupBy({
+      by: ['estrellas'],
+      where: { platilloId, estado: EstadoResena.VISIBLE },
+      _count: { _all: true },
+    });
+  }
+
   findPagina(platilloId: number, skip: number, take: number) {
     return this.prisma.resena.findMany({
       where: { platilloId, estado: EstadoResena.VISIBLE },

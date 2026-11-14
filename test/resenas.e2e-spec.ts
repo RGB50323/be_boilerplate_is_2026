@@ -14,6 +14,7 @@ import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
 const repo = {
   platilloActivo: vi.fn(),
   resumen: vi.fn(),
+  distribucion: vi.fn(),
   findPagina: vi.fn(),
 };
 let app: INestApplication;
@@ -45,6 +46,7 @@ beforeEach(() => {
     _avg: { estrellas: 4.5 },
     _count: { _all: 12 },
   });
+  repo.distribucion.mockResolvedValue([{ estrellas: 4, _count: { _all: 12 } }]);
   repo.findPagina.mockResolvedValue([
     {
       id: 3,
@@ -65,6 +67,7 @@ describe('GET /api/v1/platillos/:id/resenas', () => {
     expect(res.body).toEqual({
       promedio: 4.5,
       total: 12,
+      distribucion: { 1: 0, 2: 0, 3: 0, 4: 12, 5: 0 },
       pagina: 1,
       totalPaginas: 2,
       resenas: [

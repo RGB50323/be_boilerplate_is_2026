@@ -21,12 +21,35 @@ export class ResenaDto {
   cliente!: string;
 }
 
+export class DistribucionEstrellasDto {
+  @ApiProperty({ example: 1 })
+  1!: number;
+
+  @ApiProperty({ example: 0 })
+  2!: number;
+
+  @ApiProperty({ example: 2 })
+  3!: number;
+
+  @ApiProperty({ example: 5 })
+  4!: number;
+
+  @ApiProperty({ example: 15 })
+  5!: number;
+}
+
 export class ResenasPlatilloResponseDto {
   @ApiProperty({ type: Number, nullable: true, example: 4.6 })
   promedio!: number | null;
 
   @ApiProperty({ example: 23 })
   total!: number;
+
+  @ApiProperty({
+    type: DistribucionEstrellasDto,
+    description: 'Cantidad de reseñas visibles por estrellas',
+  })
+  distribucion!: DistribucionEstrellasDto;
 
   @ApiProperty({ example: 1 })
   pagina!: number;
