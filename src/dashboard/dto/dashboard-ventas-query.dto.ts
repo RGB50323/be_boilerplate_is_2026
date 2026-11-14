@@ -9,7 +9,8 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class DashboardVentasQueryDto {
+/** Periodo y sucursal: comunes a todas las consultas del dashboard. */
+export class DashboardRangoQueryDto {
   @ApiProperty({
     description: 'Fecha local inicial de El Salvador, inclusive (YYYY-MM-DD).',
     example: '2026-11-01',
@@ -47,7 +48,9 @@ export class DashboardVentasQueryDto {
   @Min(1, { message: 'sucursalId debe ser mayor que 0.' })
   @Max(2147483647, { message: 'sucursalId excede el máximo permitido.' })
   sucursalId?: number;
+}
 
+export class DashboardVentasQueryDto extends DashboardRangoQueryDto {
   @ApiPropertyOptional({
     description:
       'Día de la semana para los horarios pico (domingo = 0, ..., sábado = 6). Solo afecta horariosPico.',

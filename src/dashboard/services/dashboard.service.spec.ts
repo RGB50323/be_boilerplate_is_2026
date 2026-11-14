@@ -1,6 +1,10 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DashboardRepository } from '@Dashboard/repositories';
-import { armarFranjas, DashboardService } from './dashboard.service.js';
+import {
+  armarFranjas,
+  DashboardService,
+  generarCsvVentas,
+} from './dashboard.service.js';
 
 const hora = (valor: string) => new Date(`1970-01-01T${valor}:00Z`);
 
@@ -11,6 +15,8 @@ describe('DashboardService', () => {
     platillosVendidos: vi.fn(),
     ventasPorHora: vi.fn(),
     horarios: vi.fn(),
+    ventasConfirmadasDetalle: vi.fn(),
+    contarVentasConfirmadas: vi.fn(),
   };
   let service: DashboardService;
 
@@ -20,6 +26,8 @@ describe('DashboardService', () => {
     repo.platillosVendidos.mockReset().mockResolvedValue([]);
     repo.ventasPorHora.mockReset().mockResolvedValue([]);
     repo.horarios.mockReset().mockResolvedValue([]);
+    repo.ventasConfirmadasDetalle.mockReset().mockResolvedValue([]);
+    repo.contarVentasConfirmadas.mockReset().mockResolvedValue(0);
     service = new DashboardService(repo as unknown as DashboardRepository);
   });
 
@@ -98,6 +106,104 @@ describe('DashboardService', () => {
       },
       { sucursalId: 2, nombre: 'Escalón', franjas: [{ hora: 12, ventas: 0 }] },
     ]);
+  });
+});
+
+describe('DashboardService.ventasDetalle y exportarVentasCsv', () => {
+  const repo = {
+    sucursalExiste: vi.fn().mockResolvedValue(true),
+    ventasConfirmadasDetalle: vi.fn(),
+    contarVentasConfirmadas: vi.fn(),
+  };
+  const service = new DashboardService(repo as unknown as DashboardRepository);
+  const filtro = {
+    inicio: new Date('2026-11-01T06:00:00Z'),
+    fin: new Date('2026-11-09T06:00:00Z'),
+    sucursalId: undefined,
+  };
+
+  beforeEach(() => {
+    repo.ventasConfirmadasDetalle.mockReset().mockResolvedValue([venta]);
+    repo.contarVentasConfirmadas.mockReset().mockResolvedValue(45);
+  });
+
+  it('pide la página con límite y desplazamiento, y devuelve el total', async () => {
+    const r = await service.ventasDetalle({
+      desde: '2026-11-01',
+      hasta: '2026-11-08',
+      pagina: 3,
+      porPagina: 20,
+    });
+    expect(repo.ventasConfirmadasDetalle).toHaveBeenCalledWith(filtro, {
+      limite: 20,
+      desplazamiento: 40,
+    });
+    expect(r).toEqual({ items: [venta], total: 45, pagina: 3, porPagina: 20 });
+  });
+
+  it('rechaza un rango invertido sin consultar la lista', async () => {
+    await expect(
+      service.ventasDetalle({
+        desde: '2026-11-08',
+        hasta: '2026-11-01',
+        pagina: 1,
+        porPagina: 20,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.ventasConfirmadasDetalle).not.toHaveBeenCalled();
+  });
+
+  it('exporta todas las ventas del periodo, sin paginar', async () => {
+    const csv = await service.exportarVentasCsv({
+      desde: '2026-11-01',
+      hasta: '2026-11-08',
+    });
+    expect(repo.ventasConfirmadasDetalle).toHaveBeenCalledWith(filtro);
+    expect(csv.split('\r\n')).toHaveLength(2);
+  });
+});
+
+const venta = {
+  pedidoId: 15,
+  numero: 'CEN-0015',
+  sucursalId: 1,
+  sucursal: 'Centro',
+  fecha: '2026-11-08T18:05:00.000Z',
+  tipo: 'MESA' as const,
+  articulos: 3,
+  subtotal: 25,
+  descuentos: 2.5,
+  venta: 22.5,
+};
+
+describe('generarCsvVentas', () => {
+  it('una fila por venta, con fecha y hora de El Salvador', () => {
+    const csv = generarCsvVentas([
+      venta,
+      {
+        ...venta,
+        pedidoId: 16,
+        numero: null,
+        sucursal: 'Plaza "Norte", local 3',
+        fecha: '2026-11-09T02:35:00.000Z',
+        tipo: 'LLEVAR',
+        articulos: 1,
+        subtotal: 8.99,
+        descuentos: 0,
+        venta: 8.99,
+      },
+    ]);
+    expect(csv.split('\r\n')).toEqual([
+      'Fecha,Hora,Pedido,Sucursal,Tipo,Artículos,Subtotal,Descuentos,Venta',
+      '08/11/2026,12:05,CEN-0015,Centro,Mesa,3,25.00,2.50,22.50',
+      '08/11/2026,20:35,#16,"Plaza ""Norte"", local 3",Para llevar,1,8.99,0.00,8.99',
+    ]);
+  });
+
+  it('sin ventas solo tiene el encabezado', () => {
+    expect(generarCsvVentas([])).toBe(
+      'Fecha,Hora,Pedido,Sucursal,Tipo,Artículos,Subtotal,Descuentos,Venta',
+    );
   });
 });
 

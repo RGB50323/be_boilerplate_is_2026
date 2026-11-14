@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
-import { Prisma } from '@PrismaClient';
+import { Prisma, type TipoPedido } from '@PrismaClient';
 
 export interface FiltroVentas {
+  /** Inicio del periodo en UTC, inclusive. */
   inicio: Date;
+  /** Fin del periodo en UTC, exclusivo. */
   fin: Date;
   sucursalId?: number;
 }
@@ -22,6 +24,19 @@ export interface FilaPlatillo {
   monto: number;
 }
 
+export interface FilaVentaConfirmada {
+  pedidoId: number;
+  numero: string | null;
+  sucursalId: number;
+  sucursal: string;
+  fecha: string;
+  tipo: TipoPedido;
+  articulos: number;
+  subtotal: number;
+  descuentos: number;
+  venta: number;
+}
+
 export interface FilaVentasHora {
   sucursalId: number;
   hora: number;
@@ -34,6 +49,17 @@ const DESFASE_HORAS = 6;
 /** `timestamp` sin zona, en UTC, que es como Prisma guarda los DateTime. */
 const utc = (fecha: Date) => fecha.toISOString().replace('T', ' ').slice(0, 23);
 
+/**
+ * Consultas del dashboard de ventas (H28).
+ *
+ * Parten de la vista `venta_confirmada` (migración "restricciones", DB-28.1),
+ * que ya aplica la regla de negocio: ventas = subtotal − descuentos, sin IVA
+ * ni propina, solo pedidos con un pago CONFIRMADO. El periodo y las franjas
+ * horarias se toman de la fecha de confirmación del pago.
+ *
+ * Son SQL a mano porque la vista no está modelada en schema.prisma y porque
+ * agrupar por hora local no se puede expresar con el query builder.
+ */
 @Injectable()
 export class DashboardRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -57,7 +83,7 @@ export class DashboardRepository {
       ORDER BY s.id`;
   }
 
-
+  /** Ordenados por cantidad y, en empate, por monto (criterios 8 y 9). */
   platillosVendidos(filtro: FiltroVentas): Promise<FilaPlatillo[]> {
     return this.prisma.$queryRaw<FilaPlatillo[]>`
       WITH ventas AS (${this.ventasConfirmadas(filtro)})
@@ -73,6 +99,7 @@ export class DashboardRepository {
       ORDER BY "cantidad" DESC, "monto" DESC, pl.nombre ASC`;
   }
 
+  /** Ventas por sucursal y hora local; opcionalmente de un solo día (criterio 12). */
   ventasPorHora(
     filtro: FiltroVentas,
     diaSemana?: number,
@@ -89,6 +116,47 @@ export class DashboardRepository {
       ORDER BY 1, 2`;
   }
 
+  /**
+   * Cada venta confirmada del periodo, de la más reciente a la más antigua.
+   * Sin `pagina` devuelve todas (para exportar a CSV).
+   */
+  ventasConfirmadasDetalle(
+    filtro: FiltroVentas,
+    pagina?: { limite: number; desplazamiento: number },
+  ): Promise<FilaVentaConfirmada[]> {
+    return this.prisma.$queryRaw<FilaVentaConfirmada[]>`
+      WITH ventas AS (${this.ventasConfirmadas(filtro)})
+      SELECT
+        ventas.pedido_id                                  AS "pedidoId",
+        p.numero                                          AS "numero",
+        ventas.sucursal_id                                AS "sucursalId",
+        s.nombre                                          AS "sucursal",
+        to_char(ventas.fecha_pago, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "fecha",
+        p.tipo::text                                      AS "tipo",
+        COALESCE(d.articulos, 0)::int                     AS "articulos",
+        p.subtotal::float8                                AS "subtotal",
+        p.descuentos::float8                              AS "descuentos",
+        ventas.monto_neto::float8                         AS "venta"
+      FROM ventas
+      JOIN pedido p ON p.id = ventas.pedido_id
+      JOIN sucursal s ON s.id = ventas.sucursal_id
+      LEFT JOIN LATERAL (
+        SELECT SUM(dp.cantidad) AS articulos
+        FROM detalle_pedido dp
+        WHERE dp.pedido_id = ventas.pedido_id
+      ) d ON TRUE
+      ORDER BY ventas.fecha_pago DESC, ventas.pedido_id DESC
+      ${pagina ? Prisma.sql`LIMIT ${pagina.limite} OFFSET ${pagina.desplazamiento}` : Prisma.empty}`;
+  }
+
+  async contarVentasConfirmadas(filtro: FiltroVentas): Promise<number> {
+    const [{ total }] = await this.prisma.$queryRaw<[{ total: number }]>`
+      WITH ventas AS (${this.ventasConfirmadas(filtro)})
+      SELECT COUNT(*)::int AS "total" FROM ventas`;
+    return total;
+  }
+
+  /** Horarios de atención, para mostrar también las franjas sin ventas. */
   horarios(sucursalId?: number, diaSemana?: number) {
     return this.prisma.horarioSucursal.findMany({
       where: { sucursalId, diaSemana },
@@ -96,12 +164,18 @@ export class DashboardRepository {
     });
   }
 
+  /**
+   * Pedidos que cuentan como venta en el periodo: los de la vista
+   * venta_confirmada, excluyendo además cualquier pedido con un pago
+   * reembolsado (criterio 2: "con pago confirmado y sin reembolso").
+   */
   private ventasConfirmadas({ inicio, fin, sucursalId }: FiltroVentas) {
     return Prisma.sql`
       SELECT
         v.pedido_id,
         v.sucursal_id,
         v.monto_neto,
+        v.fecha_pago,
         v.fecha_pago - make_interval(hours => ${DESFASE_HORAS}) AS fecha_local
       FROM venta_confirmada v
       WHERE v.fecha_pago >= ${utc(inicio)}::timestamp
