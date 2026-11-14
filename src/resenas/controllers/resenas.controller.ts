@@ -8,10 +8,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Public } from '@Auth/decorators';
-import {
-  ListarResenasQueryDto,
-  ResenasPlatilloResponseDto,
-} from '../dto/index.js';
+import { PaginacionQueryDto } from '@Common/paginacion';
+import { ResenasPlatilloResponseDto } from '../dto/index.js';
 import { ResenasService } from '../services/index.js';
 
 @ApiTags('Reseñas')
@@ -34,7 +32,7 @@ export class ResenasController {
   })
   listar(
     @Param('id', ParseIntPipe) id: number,
-    @Query() query: ListarResenasQueryDto,
+    @Query() query: PaginacionQueryDto,
   ): Promise<ResenasPlatilloResponseDto> {
     return this.resenasService.listarPorPlatillo(id, query.pagina);
   }

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { metaPaginacion, saltoDePagina } from '@Common/paginacion';
 import { ResenasPlatilloResponseDto } from '../dto/index.js';
 import { ResenaRepository } from '../repositories/index.js';
 import { redondearPromedio } from '../utils/index.js';
@@ -36,7 +37,7 @@ export class ResenasService {
       this.repository.distribucion(platilloId),
       this.repository.findPagina(
         platilloId,
-        (pagina - 1) * RESENAS_POR_PAGINA,
+        saltoDePagina(pagina, RESENAS_POR_PAGINA),
         RESENAS_POR_PAGINA,
       ),
     ]);
@@ -47,11 +48,9 @@ export class ResenasService {
     }
 
     return {
+      ...metaPaginacion(total, pagina, RESENAS_POR_PAGINA),
       promedio: redondearPromedio(resumen._avg.estrellas),
-      total,
       distribucion,
-      pagina,
-      totalPaginas: Math.ceil(total / RESENAS_POR_PAGINA),
       resenas: filas.map((r) => ({
         id: r.id,
         estrellas: r.estrellas,
