@@ -4,10 +4,10 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma } from '@PrismaClient';
+import { Prisma, Rol, type User } from '@PrismaClient';
 import type { GuardarPlatilloDto } from '../dto/index.js';
 import type { PlatillosRepository } from '../repositories/platillos.repository.js';
-import { PlatillosService } from './platillos.service.js';
+import { PLATILLOS_POR_PAGINA, PlatillosService } from './platillos.service.js';
 
 const repository = {
   listar: vi.fn(),
@@ -59,6 +59,10 @@ function errorPrisma(code: string) {
   });
 }
 
+function usuario(extra: Partial<User> = {}) {
+  return { rol: Rol.GERENTE, sucursalId: 1, ...extra } as User;
+}
+
 describe('PlatillosService', () => {
   let service: PlatillosService;
 
@@ -70,38 +74,84 @@ describe('PlatillosService', () => {
   });
 
   describe('listar', () => {
-    it('devuelve los platillos en forma plana', async () => {
-      repository.listar.mockResolvedValue([registro()]);
+    it('devuelve los platillos paginados en forma plana', async () => {
+      repository.listar.mockResolvedValue({
+        total: 23,
+        platillos: [registro()],
+      });
 
-      const resultado = await service.listar(1, 1);
+      const resultado = await service.listar(1, usuario(), { pagina: 1 });
 
-      expect(resultado).toEqual([
-        {
-          id: 10,
-          nombre: 'Pupusa revuelta',
-          descripcion: null,
-          imagenUrl: null,
-          categoriaId: 2,
-          categoriaNombre: 'Platos típicos',
-          precio: 1.25,
-          disponibilidad: 40,
-          activo: true,
-        },
-      ]);
-      expect(repository.listar).toHaveBeenCalledWith(1);
+      expect(resultado).toEqual({
+        pagina: 1,
+        totalPaginas: 3,
+        total: 23,
+        datos: [
+          {
+            id: 10,
+            nombre: 'Pupusa revuelta',
+            descripcion: null,
+            imagenUrl: null,
+            categoriaId: 2,
+            categoriaNombre: 'Platos típicos',
+            precio: 1.25,
+            disponibilidad: 40,
+            activo: true,
+          },
+        ],
+      });
+      expect(repository.listar).toHaveBeenCalledWith(
+        1,
+        undefined,
+        false,
+        0,
+        PLATILLOS_POR_PAGINA,
+      );
     });
 
-    it('rechaza con 403 una sucursal distinta a la del gerente', async () => {
-      const promesa = service.listar(2, 1);
+    it('calcula el salto según la página y pasa la búsqueda', async () => {
+      repository.listar.mockResolvedValue({ total: 23, platillos: [] });
+
+      const resultado = await service.listar(1, usuario(), {
+        pagina: 3,
+        q: 'pupusa',
+      });
+
+      expect(resultado.pagina).toBe(3);
+      expect(repository.listar).toHaveBeenCalledWith(
+        1,
+        'pupusa',
+        false,
+        2 * PLATILLOS_POR_PAGINA,
+        PLATILLOS_POR_PAGINA,
+      );
+    });
+
+    it('el mesero solo recibe platillos activos', async () => {
+      repository.listar.mockResolvedValue({ total: 0, platillos: [] });
+
+      await service.listar(1, usuario({ rol: Rol.MESERO }), { pagina: 1 });
+
+      expect(repository.listar).toHaveBeenCalledWith(
+        1,
+        undefined,
+        true,
+        0,
+        PLATILLOS_POR_PAGINA,
+      );
+    });
+
+    it('rechaza con 403 una sucursal distinta a la del usuario', async () => {
+      const promesa = service.listar(2, usuario(), { pagina: 1 });
 
       await expect(promesa).rejects.toBeInstanceOf(ForbiddenException);
       expect(repository.listar).not.toHaveBeenCalled();
     });
 
-    it('rechaza con 403 si el gerente no tiene sucursal', async () => {
-      await expect(service.listar(1, null)).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+    it('rechaza con 403 si el usuario no tiene sucursal', async () => {
+      await expect(
+        service.listar(1, usuario({ sucursalId: null }), { pagina: 1 }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 

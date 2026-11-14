@@ -75,12 +75,29 @@ export class PlatillosRepository {
     });
   }
 
-  listar(sucursalId: number) {
-    return this.prisma.platillo.findMany({
-      where: { sucursales: { some: { sucursalId } } },
-      orderBy: { nombre: 'asc' },
-      select: seleccion(sucursalId),
-    });
+  async listar(
+    sucursalId: number,
+    q: string | undefined,
+    soloActivos: boolean,
+    skip: number,
+    take: number,
+  ) {
+    const where: Prisma.PlatilloWhereInput = {
+      sucursales: { some: { sucursalId } },
+      activo: soloActivos ? true : undefined,
+      nombre: q ? { contains: q, mode: 'insensitive' } : undefined,
+    };
+    const [total, platillos] = await this.prisma.$transaction([
+      this.prisma.platillo.count({ where }),
+      this.prisma.platillo.findMany({
+        where,
+        orderBy: [{ nombre: 'asc' }, { id: 'asc' }],
+        skip,
+        take,
+        select: seleccion(sucursalId),
+      }),
+    ]);
+    return { total, platillos };
   }
 
   buscarPropio(id: number, sucursalId: number) {

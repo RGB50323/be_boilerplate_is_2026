@@ -58,16 +58,30 @@ export class CategoriasRepository {
     });
   }
 
-  listar() {
+  async listar(skip: number, take: number) {
+    const [total, categorias] = await this.prisma.$transaction([
+      this.prisma.categoria.count(),
+      this.prisma.categoria.findMany({
+        orderBy: [{ nombre: 'asc' }, { id: 'asc' }],
+        skip,
+        take,
+        select: {
+          id: true,
+          nombre: true,
+          activa: true,
+          deshabilitadaEn: true,
+          _count: { select: { platillos: { where: { activo: true } } } },
+        },
+      }),
+    ]);
+    return { total, categorias };
+  }
+
+  listarActivas() {
     return this.prisma.categoria.findMany({
+      where: { activa: true },
       orderBy: { nombre: 'asc' },
-      select: {
-        id: true,
-        nombre: true,
-        activa: true,
-        deshabilitadaEn: true,
-        _count: { select: { platillos: { where: { activo: true } } } },
-      },
+      select: CATEGORIA_PUBLICA,
     });
   }
 

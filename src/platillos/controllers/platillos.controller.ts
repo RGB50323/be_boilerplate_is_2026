@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -43,6 +44,8 @@ import {
   ImagenesPlatilloService,
   TAMANO_MAXIMO_IMAGEN,
 } from '../services/imagenes-platillo.service.js';
+import { ListarPlatillosQueryDto } from '../dto/listar-platillos-query.dto.js';
+import { PlatillosPaginadosResponseDto } from '../dto/platillos-paginados-response.dto.js';
 
 @ApiTags('Platillos')
 @ApiBearerAuth()
@@ -61,14 +64,17 @@ export class PlatillosController {
   @Roles(Rol.GERENTE, Rol.MESERO)
   @Get('sucursales/:sucursalId/platillos')
   @ApiOperation({
-    summary: 'Listar los platillos de la sucursal (incluye deshabilitados)',
+    summary: 'Listar los platillos de la sucursal, paginados y con búsqueda',
+    description:
+      '10 por página. El gerente ve también los deshabilitados; el mesero solo los activos.',
   })
-  @ApiOkResponse({ type: [PlatilloResponseDto] })
+  @ApiOkResponse({ type: PlatillosPaginadosResponseDto })
   listar(
     @Param('sucursalId', ParseIntPipe) sucursalId: number,
+    @Query() query: ListarPlatillosQueryDto,
     @CurrentUser() usuario: User,
-  ): Promise<PlatilloResponseDto[]> {
-    return this.service.listar(sucursalId, usuario.sucursalId);
+  ): Promise<PlatillosPaginadosResponseDto> {
+    return this.service.listar(sucursalId, usuario, query);
   }
 
   @Post('sucursales/:sucursalId/platillos')

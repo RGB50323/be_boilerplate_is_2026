@@ -6,6 +6,9 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@PrismaClient';
 import { CategoriasRepository } from '../repositories/categorias.repository.js';
+import { paginar, saltoDePagina } from '@Common/paginacion';
+
+export const CATEGORIAS_POR_PAGINA = 10;
 
 function esErrorPrisma(error: unknown, codigo: string): boolean {
   return (
@@ -77,15 +80,27 @@ export class CategoriasService {
     return error instanceof Error ? error : new Error('Error inesperado.');
   }
 
-  async listar() {
-    const categorias = await this.repository.listar();
-    return categorias.map((categoria) => ({
-      id: categoria.id,
-      nombre: categoria.nombre,
-      activa: categoria.activa,
-      deshabilitadaEn: categoria.deshabilitadaEn,
-      platillosActivos: categoria._count.platillos,
-    }));
+  async listar(pagina: number) {
+    const { total, categorias } = await this.repository.listar(
+      saltoDePagina(pagina, CATEGORIAS_POR_PAGINA),
+      CATEGORIAS_POR_PAGINA,
+    );
+    return paginar(
+      categorias.map((categoria) => ({
+        id: categoria.id,
+        nombre: categoria.nombre,
+        activa: categoria.activa,
+        deshabilitadaEn: categoria.deshabilitadaEn,
+        platillosActivos: categoria._count.platillos,
+      })),
+      total,
+      pagina,
+      CATEGORIAS_POR_PAGINA,
+    );
+  }
+
+  listarActivas() {
+    return this.repository.listarActivas();
   }
 
   async listarPlatillos(categoriaId: number) {

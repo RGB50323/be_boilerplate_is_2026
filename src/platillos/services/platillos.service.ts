@@ -5,14 +5,18 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma } from '@PrismaClient';
+import { Prisma, Rol, type User } from '@PrismaClient';
 import type { GuardarPlatilloDto, PlatilloResponseDto } from '../dto/index.js';
 import {
   PlatillosRepository,
   type PlatilloRegistro,
 } from '../repositories/platillos.repository.js';
+import { paginar, saltoDePagina } from '@Common/paginacion';
+import type { ListarPlatillosQueryDto } from '../dto/listar-platillos-query.dto.js';
+import type { PlatillosPaginadosResponseDto } from '../dto/platillos-paginados-response.dto.js';
 
 const SIN_PERMISO_SUCURSAL = 'No tienes permiso para gestionar esta sucursal.';
+export const PLATILLOS_POR_PAGINA = 10;
 
 function esErrorPrisma(error: unknown, codigo: string): boolean {
   return (
@@ -42,11 +46,23 @@ export class PlatillosService {
 
   async listar(
     sucursalId: number,
-    sucursalGerente: number | null,
-  ): Promise<PlatilloResponseDto[]> {
-    this.verificarSucursal(sucursalId, sucursalGerente);
-    const platillos = await this.repository.listar(sucursalId);
-    return platillos.map(aRespuesta);
+    usuario: User,
+    query: ListarPlatillosQueryDto,
+  ): Promise<PlatillosPaginadosResponseDto> {
+    this.verificarSucursal(sucursalId, usuario.sucursalId);
+    const { total, platillos } = await this.repository.listar(
+      sucursalId,
+      query.q,
+      usuario.rol === Rol.MESERO,
+      saltoDePagina(query.pagina, PLATILLOS_POR_PAGINA),
+      PLATILLOS_POR_PAGINA,
+    );
+    return paginar(
+      platillos.map(aRespuesta),
+      total,
+      query.pagina,
+      PLATILLOS_POR_PAGINA,
+    );
   }
 
   async crear(
