@@ -134,4 +134,11 @@ export class PlatillosRepository {
       select: { id: true, activo: true },
     });
   }
+
+  buscarDetalle(id: number, sucursalId: number) {
+    return this.prisma.platillo.findFirst({
+      where: { id, sucursales: { some: { sucursalId } } },
+      select: seleccion(sucursalId),
+    });
+  }
 }

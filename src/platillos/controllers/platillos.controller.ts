@@ -156,4 +156,15 @@ export class PlatillosController {
   ): Promise<PlatilloDeshabilitadoResponseDto> {
     return this.service.habilitar(id, usuario.sucursalId);
   }
+
+  @Roles(Rol.GERENTE)
+  @Get('platillos/:id')
+  @ApiOperation({ summary: 'Obtener un platillo de la sucursal del gerente' })
+  @ApiOkResponse({ type: PlatilloResponseDto })
+  obtener(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() usuario: User,
+  ): Promise<PlatilloResponseDto> {
+    return this.service.obtener(id, usuario.sucursalId);
+  }
 }

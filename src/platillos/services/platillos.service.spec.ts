@@ -17,6 +17,7 @@ const repository = {
   buscarCategoria: vi.fn(),
   deshabilitar: vi.fn(),
   habilitar: vi.fn(),
+  buscarDetalle: vi.fn(),
 };
 
 const dto: GuardarPlatilloDto = {
@@ -339,6 +340,7 @@ describe('PlatillosService', () => {
       expect(repository.deshabilitar).not.toHaveBeenCalled();
     });
   });
+
   describe('habilitar', () => {
     it('habilita un platillo deshabilitado', async () => {
       repository.buscarPropio.mockResolvedValue(propio({ activo: false }));
@@ -397,6 +399,32 @@ describe('PlatillosService', () => {
         ForbiddenException,
       );
       expect(repository.buscarPropio).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('obtener', () => {
+    it('devuelve el platillo de la sucursal', async () => {
+      repository.buscarDetalle.mockResolvedValue(registro());
+
+      const resultado = await service.obtener(10, 1);
+
+      expect(resultado.id).toBe(10);
+      expect(repository.buscarDetalle).toHaveBeenCalledWith(10, 1);
+    });
+
+    it('responde 404 si el platillo no existe en la sucursal', async () => {
+      repository.buscarDetalle.mockResolvedValue(null);
+
+      await expect(service.obtener(10, 1)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('responde 403 si el gerente no tiene sucursal', async () => {
+      await expect(service.obtener(10, null)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(repository.buscarDetalle).not.toHaveBeenCalled();
     });
   });
 });

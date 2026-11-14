@@ -115,6 +115,18 @@ export class PlatillosService {
     return this.repository.habilitar(id);
   }
 
+    async obtener(
+    id: number,
+    sucursalId: number | null,
+  ): Promise<PlatilloResponseDto> {
+    if (sucursalId === null) {
+      throw new ForbiddenException('No tienes una sucursal asignada.');
+    }
+    const platillo = await this.repository.buscarDetalle(id, sucursalId);
+    if (!platillo) throw new NotFoundException('El platillo no existe.');
+    return aRespuesta(platillo);
+  }
+
   private verificarSucursal(
     sucursalId: number,
     sucursalGerente: number | null,
