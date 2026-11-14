@@ -60,6 +60,8 @@
       "@Platillos/*": ["./src/platillos/*/index.ts"],
       "@Pedidos": ["./src/pedidos/index.ts"],
       "@Pedidos/*": ["./src/pedidos/*/index.ts"],
+      "@Resenas": ["./src/resenas/index.ts"],
+      "@Resenas/*": ["./src/resenas/*/index.ts"],
     }
   }
 }

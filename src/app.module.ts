@@ -15,6 +15,7 @@ import { MenuModule } from './menu/menu.module.js';
 import { CategoriasModule } from '@Categorias';
 import { PlatillosModule } from '@Platillos';
 import { PedidosModule } from '@Pedidos';
+import { ResenasModule } from '@Resenas';
 
 @Module({
   imports: [
@@ -35,7 +36,8 @@ import { PedidosModule } from '@Pedidos';
     CocinaModule,
     CategoriasModule,
     PlatillosModule,
-    PedidosModule
+    PedidosModule,
+    ResenasModule,
   ],
   providers: [
     {

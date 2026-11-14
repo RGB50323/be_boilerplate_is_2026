@@ -17,6 +17,7 @@ API REST construida con **NestJS 12**, **Prisma 7** y **PostgreSQL 18**, con aut
 - [Autenticación](#autenticación)
 - [Endpoints](#endpoints)
 - [Cocina: pedidos pendientes (H06)](#cocina-pedidos-pendientes-h06)
+- [Paginación común](#paginación-común)
 - [Arquitectura por capas](#arquitectura-por-capas)
 - [Path aliases](#path-aliases)
 - [Estructura del proyecto](#estructura-del-proyecto)
@@ -471,6 +472,33 @@ El servicio relee el pedido, decide qué evento corresponde (`nuevo`, `actualiza
 
 ---
 
+## Paginación común
+
+Todo listado paginado usa lo mismo, en `src/common/paginacion` (`@Common/paginacion`):
+
+- `PaginacionQueryDto`: `?pagina=N`, entero de 1 a 1000, por defecto 1. Si no cumple responde 400.
+- `saltoDePagina(pagina, porPagina)`: cuántos registros saltar (`skip` de Prisma).
+- `metaPaginacion(total, pagina, porPagina)`: `{ pagina, totalPaginas, total }`.
+- `paginar(datos, total, pagina, porPagina)`: lo mismo más `datos`.
+
+```ts
+@Get()
+listar(@Query() { pagina }: PaginacionQueryDto) {
+  return this.service.listar(pagina);
+}
+
+// En el service
+const [datos, total] = await Promise.all([
+  this.repo.findMany({ skip: saltoDePagina(pagina, 10), take: 10 }),
+  this.repo.count(),
+]);
+return paginar(datos, total, pagina, 10);
+```
+
+Si el query necesita más filtros, extiende el DTO: `class MiQueryDto extends PaginacionQueryDto { ... }`. En el front está el componente `Paginacion` (`components/ui/paginacion.tsx`).
+
+---
+
 ## Arquitectura por capas
 
 Cada módulo se organiza en carpetas por responsabilidad, y **cada carpeta expone un barrel `index.ts`**. El flujo de una request es siempre el mismo:
@@ -539,6 +567,7 @@ Definidos en [tsconfig.json](tsconfig.json):
 | `@Health`, `@Health/*` | `src/health/…` |
 | `@Prisma`, `@Prisma/*` | `src/prisma/…` |
 | `@Cocina`, `@Cocina/*` | `src/cocina/…` |
+| `@Resenas`, `@Resenas/*` | `src/resenas/…` |
 | `@Common/*` | `src/common/*/index.ts` |
 | `@Config` | `src/config/index.ts` |
 | `@PrismaClient` | Cliente generado de Prisma |
