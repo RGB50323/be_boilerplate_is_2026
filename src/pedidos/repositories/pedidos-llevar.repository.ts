@@ -131,4 +131,34 @@ export class PedidosLlevarRepository {
       }
     });
   }
+
+  buscarSeguimiento(id: number) {
+    return this.prisma.pedido.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        numero: true,
+        estado: true,
+        tipo: true,
+        clienteId: true,
+        nombreCliente: true,
+        total: true,
+        creadoEn: true,
+        sucursal: { select: { nombre: true } },
+        pagos: { orderBy: { id: 'desc' }, take: 1, select: { estado: true } },
+        detalles: {
+          orderBy: { id: 'asc' },
+          select: {
+            id: true,
+            platilloId: true,
+            cantidad: true,
+            precioUnitario: true,
+            nota: true,
+            estado: true,
+            platillo: { select: { nombre: true } },
+          },
+        },
+      },
+    });
+  }
 }

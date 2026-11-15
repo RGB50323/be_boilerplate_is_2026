@@ -35,6 +35,7 @@ import {
   PedidoCreadoResponseDto,
   PedidoDetalleResponseDto,
   PedidoLlevarCreadoResponseDto,
+  PedidoSeguimientoResponseDto,
   PedidoTotalResponseDto,
 } from '../dto/index.js';
 import { PedidosService } from '../services/pedidos.service.js';
@@ -110,9 +111,24 @@ export class PedidosController {
     return this.llevar.cancelar(id, usuario);
   }
 
+  @Get(':id/seguimiento')
+  @Roles(Rol.CLIENTE)
+  @ApiOperation({
+    summary: 'Ver el seguimiento de un pedido para llevar propio',
+  })
+  @ApiOkResponse({ type: PedidoSeguimientoResponseDto })
+  @ApiNotFoundResponse({ description: 'El pedido no existe' })
+  seguimiento(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() usuario: User,
+  ): Promise<PedidoSeguimientoResponseDto> {
+    return this.llevar.obtenerSeguimiento(id, usuario);
+  }
+
   @Post(':id/items')
   @ApiOperation({
-    summary: 'Agregar platillos a un pedido abierto (llegan a cocina como nuevos)',
+    summary:
+      'Agregar platillos a un pedido abierto (llegan a cocina como nuevos)',
   })
   @ApiCreatedResponse({ type: ItemsAgregadosResponseDto })
   @ApiNotFoundResponse({ description: 'El pedido o un platillo no existe' })

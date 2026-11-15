@@ -5,12 +5,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoPedido, Prisma, Rol, TipoPedido, type User } from '@PrismaClient';
+import {
+  EstadoPedido,
+  Prisma,
+  Rol,
+  TipoPedido,
+  type User,
+} from '@PrismaClient';
 import type {
   CrearPedidoDto,
   PedidoCanceladoResponseDto,
   PedidoLlevarCreadoResponseDto,
   PedidoRecibidoResponseDto,
+  PedidoSeguimientoResponseDto,
 } from '../dto/index.js';
 import {
   PedidoNoCancelableError,
@@ -73,6 +80,39 @@ export class PedidosLlevarService {
       pedidoId: pedido.id,
       numero: pedido.numero,
       estado: pedido.estado,
+    };
+  }
+
+  async obtenerSeguimiento(
+    id: number,
+    usuario: User,
+  ): Promise<PedidoSeguimientoResponseDto> {
+    if (usuario.rol !== Rol.CLIENTE) throw new ForbiddenException(SIN_PERMISO);
+
+    const pedido = await this.repository.buscarSeguimiento(id);
+    if (pedido === null) throw new NotFoundException('El pedido no existe.');
+    if (pedido.tipo !== TipoPedido.LLEVAR || pedido.clienteId !== usuario.id) {
+      throw new ForbiddenException('Este pedido no es tuyo.');
+    }
+
+    return {
+      pedidoId: pedido.id,
+      numero: pedido.numero,
+      estado: pedido.estado,
+      sucursal: pedido.sucursal.nombre,
+      nombreCliente: pedido.nombreCliente,
+      total: pedido.total.toNumber(),
+      creadoEn: pedido.creadoEn.toISOString(),
+      pago: pedido.pagos[0]?.estado ?? null,
+      items: pedido.detalles.map((d) => ({
+        itemId: d.id,
+        platilloId: d.platilloId,
+        nombre: d.platillo.nombre,
+        cantidad: d.cantidad,
+        precioUnitario: d.precioUnitario.toNumber(),
+        nota: d.nota,
+        estado: d.estado,
+      })),
     };
   }
 
