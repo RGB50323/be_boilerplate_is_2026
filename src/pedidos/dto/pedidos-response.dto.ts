@@ -181,3 +181,37 @@ export class PedidoSeguimientoResponseDto {
   @ApiProperty({ type: [ItemDetalleResponseDto] })
   items!: ItemDetalleResponseDto[];
 }
+
+export class PedidoResumenResponseDto {
+  @ApiProperty({ example: 121 })
+  pedidoId!: number;
+
+  @ApiProperty({ example: 'S1-000121', nullable: true })
+  numero!: string | null;
+
+  @ApiProperty({ example: 'RECIBIDO' })
+  estado!: string;
+
+  @ApiProperty({ example: 'Centro' })
+  sucursal!: string;
+
+  @ApiProperty({ example: 17.98 })
+  total!: number;
+
+  @ApiProperty({ example: '2026-11-14T18:00:00.000Z' })
+  creadoEn!: string;
+}
+
+export class PedidosPaginadosResponseDto {
+  @ApiProperty({ type: [PedidoResumenResponseDto] })
+  datos!: PedidoResumenResponseDto[];
+
+  @ApiProperty({ example: 1 })
+  pagina!: number;
+
+  @ApiProperty({ example: 1 })
+  totalPaginas!: number;
+
+  @ApiProperty({ example: 1 })
+  total!: number;
+}

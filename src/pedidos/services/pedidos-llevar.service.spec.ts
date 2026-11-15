@@ -32,6 +32,7 @@ const repo = {
   buscarSucursal: vi.fn(),
   buscarPedido: vi.fn(),
   buscarSeguimiento: vi.fn(),
+  listarPorCliente: vi.fn(),
   crear: vi.fn(),
   confirmarPago: vi.fn(),
   cancelar: vi.fn(),
@@ -301,5 +302,47 @@ describe('obtenerSeguimiento', () => {
     await expect(
       service.obtenerSeguimiento(121, cliente),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('listarMios', () => {
+  it('pagina solo los pedidos del cliente autenticado', async () => {
+    repo.listarPorCliente.mockResolvedValue([
+      [
+        {
+          id: 121,
+          numero: 'S1-000121',
+          estado: EstadoPedido.RECIBIDO,
+          total: new Prisma.Decimal(17.98),
+          creadoEn: new Date('2026-11-14T18:00:00Z'),
+          sucursal: { nombre: 'Centro' },
+        },
+      ],
+      11,
+    ]);
+
+    expect(await service.listarMios(cliente, 2)).toEqual({
+      pagina: 2,
+      totalPaginas: 2,
+      total: 11,
+      datos: [
+        {
+          pedidoId: 121,
+          numero: 'S1-000121',
+          estado: 'RECIBIDO',
+          sucursal: 'Centro',
+          total: 17.98,
+          creadoEn: '2026-11-14T18:00:00.000Z',
+        },
+      ],
+    });
+    expect(repo.listarPorCliente).toHaveBeenCalledWith('c1', 2, 10);
+  });
+
+  it('403 si quien consulta no es cliente', async () => {
+    await expect(service.listarMios(mesero, 1)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(repo.listarPorCliente).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import {
   totalizar,
   type ItemNuevo,
 } from './pedidos.repository.js';
+import { saltoDePagina } from '@Common/paginacion';
 
 export class PedidoNoCancelableError extends Error {
   constructor() {
@@ -44,6 +45,27 @@ export class PedidosLlevarRepository {
         clienteId: true,
       },
     });
+  }
+
+  listarPorCliente(clienteId: string, pagina: number, porPagina: number) {
+    const where = { clienteId, tipo: TipoPedido.LLEVAR };
+    return this.prisma.$transaction([
+      this.prisma.pedido.findMany({
+        where,
+        orderBy: { id: 'desc' },
+        skip: saltoDePagina(pagina, porPagina),
+        take: porPagina,
+        select: {
+          id: true,
+          numero: true,
+          estado: true,
+          total: true,
+          creadoEn: true,
+          sucursal: { select: { nombre: true } },
+        },
+      }),
+      this.prisma.pedido.count({ where }),
+    ]);
   }
 
   crear(datos: DatosPedidoLlevar) {

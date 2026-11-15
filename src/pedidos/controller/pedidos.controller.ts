@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -36,10 +37,12 @@ import {
   PedidoDetalleResponseDto,
   PedidoLlevarCreadoResponseDto,
   PedidoSeguimientoResponseDto,
+  PedidosPaginadosResponseDto,
   PedidoTotalResponseDto,
 } from '../dto/index.js';
 import { PedidosService } from '../services/pedidos.service.js';
 import { PedidosLlevarService } from '../services/pedidos-llevar.service.js';
+import { PaginacionQueryDto } from '@Common/paginacion';
 
 @ApiTags('Pedidos')
 @ApiBearerAuth()
@@ -89,6 +92,20 @@ export class PedidosController {
       );
     }
     return this.service.crear(dto, usuario);
+  }
+
+  @Get('mios')
+  @Roles(Rol.CLIENTE)
+  @ApiOperation({
+    summary: 'Mis pedidos para llevar, más recientes primero, 10 por página',
+  })
+  @ApiOkResponse({ type: PedidosPaginadosResponseDto })
+  @ApiBadRequestResponse({ description: 'Página inválida' })
+  listarMios(
+    @CurrentUser() usuario: User,
+    @Query() query: PaginacionQueryDto,
+  ): Promise<PedidosPaginadosResponseDto> {
+    return this.llevar.listarMios(usuario, query.pagina);
   }
 
   @Post(':id/cancelar')

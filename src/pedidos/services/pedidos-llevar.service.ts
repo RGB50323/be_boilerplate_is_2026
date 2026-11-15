@@ -24,9 +24,11 @@ import {
   PedidosLlevarRepository,
 } from '../repositories/pedidos-llevar.repository.js';
 import { PedidosService } from './pedidos.service.js';
+import { paginar } from '@Common/paginacion';
 
 const SIN_PERMISO = 'No tienes permiso para realizar esta acción.';
 const NO_CANCELABLE = 'El pedido ya no se puede cancelar.';
+const PEDIDOS_POR_PAGINA = 10;
 
 @Injectable()
 export class PedidosLlevarService {
@@ -114,6 +116,29 @@ export class PedidosLlevarService {
         estado: d.estado,
       })),
     };
+  }
+
+  async listarMios(usuario: User, pagina: number) {
+    if (usuario.rol !== Rol.CLIENTE) throw new ForbiddenException(SIN_PERMISO);
+
+    const [pedidos, total] = await this.repository.listarPorCliente(
+      usuario.id,
+      pagina,
+      PEDIDOS_POR_PAGINA,
+    );
+    return paginar(
+      pedidos.map((p) => ({
+        pedidoId: p.id,
+        numero: p.numero,
+        estado: p.estado,
+        sucursal: p.sucursal.nombre,
+        total: p.total.toNumber(),
+        creadoEn: p.creadoEn.toISOString(),
+      })),
+      total,
+      pagina,
+      PEDIDOS_POR_PAGINA,
+    );
   }
 
   async cancelar(
