@@ -49,7 +49,7 @@ export type ItemExistente = {
 
 export type CambiosItem = { cantidad?: number; nota?: string | null };
 
-function totalizar(items: ItemNuevo[]): Map<number, number> {
+export function totalizar(items: ItemNuevo[]): Map<number, number> {
   const porPlatillo = new Map<number, number>();
   for (const item of items) {
     porPlatillo.set(
@@ -60,7 +60,7 @@ function totalizar(items: ItemNuevo[]): Map<number, number> {
   return porPlatillo;
 }
 
-async function descontar(
+export async function descontar(
   tx: Prisma.TransactionClient,
   sucursalId: number,
   porPlatillo: Map<number, number>,
@@ -74,7 +74,7 @@ async function descontar(
   }
 }
 
-async function devolver(
+export async function devolver(
   tx: Prisma.TransactionClient,
   sucursalId: number,
   platilloId: number,
