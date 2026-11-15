@@ -115,3 +115,37 @@ export class PedidoDetalleResponseDto {
   @ApiProperty({ type: [ItemDetalleResponseDto] })
   items!: ItemDetalleResponseDto[];
 }
+
+
+export class PedidoLlevarCreadoResponseDto {
+  @ApiProperty({ example: 121 })
+  pedidoId!: number;
+
+  @ApiProperty({ example: 'PENDIENTE_PAGO' })
+  estado!: string;
+
+  @ApiProperty({ example: 8.5 })
+  total!: number;
+}
+
+export class PedidoRecibidoResponseDto {
+  @ApiProperty({ example: 121 })
+  pedidoId!: number;
+
+  @ApiProperty({ example: 'S1-000121', nullable: true })
+  numero!: string | null;
+
+  @ApiProperty({ example: 'RECIBIDO' })
+  estado!: string;
+}
+
+export class PedidoCanceladoResponseDto {
+  @ApiProperty({ example: 121 })
+  pedidoId!: number;
+
+  @ApiProperty({ example: 'CANCELADO' })
+  estado!: string;
+
+  @ApiProperty({ example: 'REEMBOLSADO' })
+  pago!: string;
+}

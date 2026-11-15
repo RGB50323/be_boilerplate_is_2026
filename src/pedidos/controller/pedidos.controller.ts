@@ -2,7 +2,10 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
@@ -28,38 +31,83 @@ import {
   CambiarItemDto,
   CrearPedidoDto,
   ItemsAgregadosResponseDto,
+  PedidoCanceladoResponseDto,
   PedidoCreadoResponseDto,
   PedidoDetalleResponseDto,
+  PedidoLlevarCreadoResponseDto,
   PedidoTotalResponseDto,
 } from '../dto/index.js';
 import { PedidosService } from '../services/pedidos.service.js';
+import { PedidosLlevarService } from '../services/pedidos-llevar.service.js';
 
 @ApiTags('Pedidos')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse({ description: 'Sin sesión' })
 @ApiForbiddenResponse({
-  description: 'Rol distinto a MESERO o mesa/pedido de otra sucursal',
+  description:
+    'Rol no permitido para la operación o mesa/pedido de otra sucursal o de otro cliente',
 })
 @Roles(Rol.MESERO)
 @Controller('pedidos')
 export class PedidosController {
-  constructor(private readonly service: PedidosService) { }
+  constructor(
+    private readonly service: PedidosService,
+    private readonly llevar: PedidosLlevarService,
+  ) {}
 
   @Post()
+  @Roles(Rol.MESERO, Rol.CLIENTE)
   @ApiOperation({
-    summary: 'Registrar el pedido de una mesa y enviarlo a cocina',
+    summary:
+      'MESA (mesero): registra el pedido y lo envía a cocina. LLEVAR (cliente): lo deja pendiente de pago',
   })
-  @ApiCreatedResponse({ type: PedidoCreadoResponseDto })
-  @ApiNotFoundResponse({ description: 'La mesa o un platillo no existe' })
+  @ApiCreatedResponse({
+    description:
+      'MESA: PedidoCreado. LLEVAR: { pedidoId, estado: PENDIENTE_PAGO, total }',
+    type: PedidoLlevarCreadoResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'Sin platillos, sin nombre completo o datos inválidos',
+  })
+  @ApiNotFoundResponse({
+    description: 'La mesa, la sucursal o un platillo no existe',
+  })
   @ApiConflictResponse({ description: 'La mesa ya tiene un pedido abierto' })
   @ApiUnprocessableEntityResponse({
-    description: 'Platillo deshabilitado o sin disponibilidad suficiente',
+    description:
+      'Platillo deshabilitado, de otra sucursal o sin disponibilidad suficiente',
   })
   crear(
     @Body() dto: CrearPedidoDto,
     @CurrentUser() usuario: User,
-  ): Promise<PedidoCreadoResponseDto> {
+  ): Promise<PedidoCreadoResponseDto | PedidoLlevarCreadoResponseDto> {
+    if (dto.tipo === 'LLEVAR') return this.llevar.crear(dto, usuario);
+    if (usuario.rol !== Rol.MESERO) {
+      throw new ForbiddenException(
+        'Solo un mesero puede registrar pedidos de mesa.',
+      );
+    }
     return this.service.crear(dto, usuario);
+  }
+
+  @Post(':id/cancelar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Rol.CLIENTE)
+  @ApiOperation({
+    summary:
+      'Cancelar un pedido para llevar RECIBIDO: reembolsa el pago y devuelve la disponibilidad',
+  })
+  @ApiOkResponse({ type: PedidoCanceladoResponseDto })
+  @ApiNotFoundResponse({ description: 'El pedido no existe' })
+  @ApiConflictResponse({
+    description:
+      'El pedido ya está en preparación o en un estado distinto de RECIBIDO',
+  })
+  cancelar(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() usuario: User,
+  ): Promise<PedidoCanceladoResponseDto> {
+    return this.llevar.cancelar(id, usuario);
   }
 
   @Post(':id/items')
