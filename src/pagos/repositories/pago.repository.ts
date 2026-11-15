@@ -25,6 +25,29 @@ export class PagoRepository {
   buscarPedido(pedidoId: number) {
     return this.prisma.pedido.findUnique({
       where: { id: pedidoId },
+      select: {
+        id: true,
+        numero: true,
+        estado: true,
+        total: true,
+        sucursalId: true,
+        actualizadoEn: true,
+
+        detalles: {
+          select: {
+            id: true,
+            cantidad: true,
+            precioUnitario: true,
+            estado: true,
+            platillo: {
+              select: {
+                id: true,
+                nombre: true,
+              },
+            },
+          },
+        },
+      },
     });
   }
 
@@ -47,4 +70,52 @@ export class PagoRepository {
       where: { transaccionId },
     });
   }
+
+
+
+  // Actualización atómica: solamente modifica el pago
+  // si conserva el estado que acabamos de validar.
+  actualizarEstado(
+    transaccionId: string,
+    estadoActual: EstadoPago,
+    estadoNuevo: EstadoPago,
+  ) {
+    return this.prisma.pago.updateMany({
+      where: {
+        transaccionId,
+        estado: estadoActual,
+      },
+      data: {
+        estado: estadoNuevo,
+        ...(estadoNuevo === EstadoPago.CONFIRMADO
+          ? { confirmadoEn: new Date() }
+          : {}),
+        ...(estadoNuevo === EstadoPago.REEMBOLSADO
+          ? { reembolsadoEn: new Date() }
+          : {}),
+      },
+    });
+  }
+
+  // Recuperar los datos actualizados de la operación
+  obtenerEstado(transaccionId: string) {
+    return this.prisma.pago.findUnique({
+      where: { transaccionId },
+      select: {
+        id: true,
+        pedidoId: true,
+        transaccionId: true,
+        monto: true,
+        estado: true,
+        creadoEn: true,
+        actualizadoEn: true,
+        confirmadoEn: true,
+        reembolsadoEn: true,
+      },
+    });
+  }
+
+
+
+
 }
