@@ -27,7 +27,10 @@ describe('CrearPedidoDto', () => {
 
   it('acepta una nota nula o ausente', async () => {
     expect(
-      await errores({ ...valido, items: [{ platilloId: 10, cantidad: 1, nota: null }] }),
+      await errores({
+        ...valido,
+        items: [{ platilloId: 10, cantidad: 1, nota: null }],
+      }),
     ).toEqual([]);
     expect(
       await errores({ ...valido, items: [{ platilloId: 10, cantidad: 1 }] }),
@@ -42,10 +45,45 @@ describe('CrearPedidoDto', () => {
     expect(dto.items[0]?.nota).toBe('sin cebolla');
   });
 
-  it('rechaza un tipo distinto de MESA', async () => {
-    expect(await errores({ ...valido, tipo: 'LLEVAR' })).toContain(
-      'Solo se admiten pedidos de mesa.',
+  it('rechaza un tipo desconocido', async () => {
+    expect(await errores({ ...valido, tipo: 'DOMICILIO' })).toContain(
+      'El tipo de pedido no es válido.',
     );
+  });
+
+  describe('para llevar', () => {
+    const llevar = {
+      tipo: 'LLEVAR',
+      sucursalId: 1,
+      nombreCliente: 'Ana López',
+      items: valido.items,
+    };
+
+    it('acepta un pedido válido sin mesa', async () => {
+      expect(await errores(llevar)).toEqual([]);
+    });
+
+    it('rechaza una sucursal ausente o menor a 1', async () => {
+      for (const sucursalId of [undefined, 0]) {
+        expect(await errores({ ...llevar, sucursalId })).toContain(
+          'La sucursal es obligatoria.',
+        );
+      }
+    });
+
+    it('rechaza un nombre ausente, vacío o de una sola palabra', async () => {
+      for (const nombreCliente of [undefined, '', '   ', 'Ana']) {
+        expect(await errores({ ...llevar, nombreCliente })).toContain(
+          'Ingresa tu nombre completo.',
+        );
+      }
+    });
+
+    it('rechaza un nombre de más de 120 caracteres', async () => {
+      expect(
+        await errores({ ...llevar, nombreCliente: `Ana ${'a'.repeat(120)}` }),
+      ).toContain('El nombre no puede superar los 120 caracteres.');
+    });
   });
 
   it('rechaza una mesa ausente o menor a 1', async () => {
@@ -70,16 +108,18 @@ describe('CrearPedidoDto', () => {
       items: [{ platilloId: 10, cantidad }],
     });
     expect(await errores(con(0))).toContain('La cantidad debe ser al menos 1.');
-    expect(await errores(con(-2))).toContain('La cantidad debe ser al menos 1.');
+    expect(await errores(con(-2))).toContain(
+      'La cantidad debe ser al menos 1.',
+    );
     expect(await errores(con(1.5))).toContain(
       'La cantidad debe ser un número entero.',
     );
   });
 
   it('rechaza un platillo ausente', async () => {
-    expect(
-      await errores({ ...valido, items: [{ cantidad: 1 }] }),
-    ).toContain('El platillo es obligatorio.');
+    expect(await errores({ ...valido, items: [{ cantidad: 1 }] })).toContain(
+      'El platillo es obligatorio.',
+    );
   });
 
   it('rechaza una nota de más de 200 caracteres', async () => {
