@@ -4,11 +4,21 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { EstadoPedido, Prisma, Rol, TipoPedido, type User } from '@PrismaClient';
+import {
+  EstadoPedido,
+  Prisma,
+  Rol,
+  TipoPedido,
+  type User,
+} from '@PrismaClient';
 import { PedidoNoCancelableError } from '../repositories/pedidos-llevar.repository.js';
 import { PedidosLlevarService } from './pedidos-llevar.service.js';
 
-const cliente = { id: 'c1', rol: Rol.CLIENTE, sucursalId: null } as unknown as User;
+const cliente = {
+  id: 'c1',
+  rol: Rol.CLIENTE,
+  sucursalId: null,
+} as unknown as User;
 const mesero = { id: 'm1', rol: Rol.MESERO, sucursalId: 1 } as unknown as User;
 
 const dto = {
@@ -21,6 +31,7 @@ const dto = {
 const repo = {
   buscarSucursal: vi.fn(),
   buscarPedido: vi.fn(),
+  buscarSeguimiento: vi.fn(),
   crear: vi.fn(),
   confirmarPago: vi.fn(),
   cancelar: vi.fn(),
@@ -205,5 +216,90 @@ describe('cancelar', () => {
     await expect(service.cancelar(121, cliente)).rejects.toBeInstanceOf(
       ConflictException,
     );
+  });
+});
+
+describe('obtenerSeguimiento', () => {
+  const pedido = {
+    id: 121,
+    numero: 'S1-000121',
+    estado: EstadoPedido.RECIBIDO,
+    tipo: TipoPedido.LLEVAR,
+    clienteId: 'c1',
+    nombreCliente: 'Ana López',
+    total: new Prisma.Decimal(17.98),
+    creadoEn: new Date('2026-11-14T18:00:00Z'),
+    sucursal: { nombre: 'Centro' },
+    pagos: [{ estado: 'CONFIRMADO' }],
+    detalles: [
+      {
+        id: 1,
+        platilloId: 10,
+        cantidad: 2,
+        precioUnitario: new Prisma.Decimal(8.99),
+        nota: null,
+        estado: 'PENDIENTE',
+        platillo: { nombre: 'Hamburguesa' },
+      },
+    ],
+  };
+
+  it('devuelve el seguimiento del pedido propio', async () => {
+    repo.buscarSeguimiento.mockResolvedValue(pedido);
+    expect(await service.obtenerSeguimiento(121, cliente)).toEqual({
+      pedidoId: 121,
+      numero: 'S1-000121',
+      estado: 'RECIBIDO',
+      sucursal: 'Centro',
+      nombreCliente: 'Ana López',
+      total: 17.98,
+      creadoEn: '2026-11-14T18:00:00.000Z',
+      pago: 'CONFIRMADO',
+      items: [
+        {
+          itemId: 1,
+          platilloId: 10,
+          nombre: 'Hamburguesa',
+          cantidad: 2,
+          precioUnitario: 8.99,
+          nota: null,
+          estado: 'PENDIENTE',
+        },
+      ],
+    });
+  });
+
+  it('pago es null si el pedido aún no tiene pagos', async () => {
+    repo.buscarSeguimiento.mockResolvedValue({ ...pedido, pagos: [] });
+    expect(await service.obtenerSeguimiento(121, cliente)).toMatchObject({
+      pago: null,
+    });
+  });
+
+  it('403 si quien consulta no es cliente', async () => {
+    await expect(
+      service.obtenerSeguimiento(121, mesero),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('404 si el pedido no existe', async () => {
+    repo.buscarSeguimiento.mockResolvedValue(null);
+    await expect(
+      service.obtenerSeguimiento(121, cliente),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('403 si el pedido es de otro cliente o no es para llevar', async () => {
+    repo.buscarSeguimiento.mockResolvedValue({ ...pedido, clienteId: 'otro' });
+    await expect(
+      service.obtenerSeguimiento(121, cliente),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    repo.buscarSeguimiento.mockResolvedValue({
+      ...pedido,
+      tipo: TipoPedido.MESA,
+    });
+    await expect(
+      service.obtenerSeguimiento(121, cliente),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
