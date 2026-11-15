@@ -7,9 +7,9 @@ import {
 } from '@nestjs/common';
 
 import { EstadoPago, Prisma } from '@PrismaClient';
-
 import { ProcesarPagoDto } from '@Pagos/dto';
 import { PagoRepository } from '../repositories/pago.repository.js';
+
 import {
   PasarelaSimuladaService,
   EstadoTransaccionSimulada,
@@ -21,6 +21,10 @@ export class PagosService {
     private readonly pagoRepository: PagoRepository,
     private readonly pasarela: PasarelaSimuladaService,
   ) {}
+
+  // =========================================================
+  // BE-16.1: Procesar pago mediante pasarela simulada
+  // =========================================================
 
   async procesarPago(datos: ProcesarPagoDto) {
     const { solicitudId, ticket } = datos;
@@ -38,31 +42,37 @@ export class PagosService {
     const pedido = await this.pagoRepository.buscarPedido(ticket.id);
 
     if (!pedido) {
-      throw new NotFoundException(
-        `No existe el pedido ${ticket.id}`,
+      throw new NotFoundException(`No existe el pedido ${ticket.id}`);
+    }
+
+    // 3. Validar el ticket contra los datos de H04
+    this.validarTicket(ticket, pedido);
+
+    // 4. Verificar si existe otro pago que impida cobrar
+    const pagoBloqueante = await this.pagoRepository.buscarPagoBloqueante(
+      ticket.id,
+    );
+
+    if (pagoBloqueante) {
+      throw new ConflictException(
+        `El pedido ${ticket.id} ya tiene un pago en estado ${pagoBloqueante.estado}`,
       );
     }
 
-    this.validarTicket(ticket, pedido);
+    // 5. Ejecutar la pasarela simulada
+    const resultado = this.pasarela.procesarPago(String(ticket.id));
 
-    // 3. Ejecutar la simulación local
-    const resultado = this.pasarela.procesarPago(
-      String(ticket.id),
-    );
-
-    // 4. Verificar que el simulador devolvió
-    // un resultado inicial válido
+    // 6. Validar la respuesta inicial del simulador
     if (
+      !resultado ||
       !resultado.transaccionId ||
       resultado.referencia !== String(ticket.id) ||
       resultado.estado !== EstadoTransaccionSimulada.PENDIENTE
     ) {
-      throw new BadGatewayException(
-        'Respuesta inválida del simulador',
-      );
+      throw new BadGatewayException('Respuesta inválida del simulador');
     }
 
-    // 5. Registrar la operación
+    // 7. Registrar el pago
     try {
       const pago = await this.pagoRepository.crear({
         pedidoId: ticket.id,
@@ -74,24 +84,36 @@ export class PagosService {
 
       return this.respuestaPago(pago);
     } catch (error: unknown) {
-      // Manejar solicitudes simultáneas con la misma clave.
       if (this.esConflictoUnico(error)) {
         const existente =
           await this.pagoRepository.buscarPorSolicitud(solicitudId);
 
+        // Misma solicitud: recuperar el pago original
         if (existente) {
           this.verificarReintento(existente, ticket);
           return this.respuestaPago(existente);
         }
+
+        // Otra solicitud: PostgreSQL impidió
+        // crear un segundo pago activo para el pedido
+        throw new ConflictException(
+          'El pedido ya tiene una operación de pago activa',
+        );
       }
 
       throw error;
     }
   }
 
+  // =========================================================
+  // Validación del ticket recibido contra el pedido de H04
+  // =========================================================
 
-  private validarTicket( ticket: ProcesarPagoDto['ticket'], pedido: NonNullable<Awaited<ReturnType<PagoRepository['buscarPedido']>>>,): void {
-    // Comparar el total recibido contra el registrado
+  private validarTicket(
+    ticket: ProcesarPagoDto['ticket'],
+    pedido: NonNullable<Awaited<ReturnType<PagoRepository['buscarPedido']>>>,
+  ): void {
+    // Comparar el total recibido con el registrado
     if (!new Prisma.Decimal(ticket.total).eq(pedido.total)) {
       throw new BadRequestException(
         'El total del ticket no coincide con el pedido',
@@ -105,37 +127,41 @@ export class PagosService {
       );
     }
 
-    // Normalizar las líneas para compararlas sin depender del orden
-    const lineasTicket = ticket.items.map((item) => {
-      const precio = new Prisma.Decimal(item.precio_unitario);
-      const subtotal = new Prisma.Decimal(item.subtotal);
+    // Normalizar las líneas sin depender del orden
+    const lineasTicket = ticket.items
+      .map((item) => {
+        const precio = new Prisma.Decimal(item.precio_unitario);
+        const subtotal = new Prisma.Decimal(item.subtotal);
 
-      if (!subtotal.eq(precio.mul(item.cantidad))) {
-        throw new BadRequestException(
-          'El subtotal de un artículo es incorrecto',
-        );
-      }
+        if (!subtotal.eq(precio.mul(item.cantidad))) {
+          throw new BadRequestException(
+            'El subtotal de un artículo es incorrecto',
+          );
+        }
 
-      return JSON.stringify([
-        item.nombre,
-        precio.toFixed(2),
-        item.cantidad,
-        subtotal.toFixed(2),
-      ]);
-    }).sort();
+        return JSON.stringify([
+          item.nombre,
+          precio.toFixed(2),
+          item.cantidad,
+          subtotal.toFixed(2),
+        ]);
+      })
+      .sort();
 
-    const lineasPedido = pedido.detalles.map((detalle) => {
-      const subtotal = detalle.precioUnitario.mul(detalle.cantidad);
+    const lineasPedido = pedido.detalles
+      .map((detalle) => {
+        const subtotal = detalle.precioUnitario.mul(detalle.cantidad);
 
-      return JSON.stringify([
-        detalle.platillo.nombre,
-        detalle.precioUnitario.toFixed(2),
-        detalle.cantidad,
-        subtotal.toFixed(2),
-      ]);
-    }).sort();
+        return JSON.stringify([
+          detalle.platillo.nombre,
+          detalle.precioUnitario.toFixed(2),
+          detalle.cantidad,
+          subtotal.toFixed(2),
+        ]);
+      })
+      .sort();
 
-    //compara cada elemento del ticket con el del pedido
+    // Comparar cada línea del ticket con el pedido
     for (let i = 0; i < lineasTicket.length; i++) {
       if (lineasTicket[i] !== lineasPedido[i]) {
         throw new BadRequestException(
@@ -145,52 +171,42 @@ export class PagosService {
     }
   }
 
+  // =========================================================
+  // BE-16.2: Consultar y actualizar transacciones
+  // =========================================================
 
-
-
-  // BE-16.2: consultar una transacción
   async consultarTransaccion(transaccionId: string) {
-    const pago =
-      await this.pagoRepository.obtenerEstado(transaccionId);
+    const pago = await this.pagoRepository.obtenerEstado(transaccionId);
 
     if (!pago) {
-      throw new NotFoundException(
-        'No existe la transacción solicitada',
-      );
+      throw new NotFoundException('No existe la transacción solicitada');
     }
 
     return pago;
   }
 
-  // BE-16.2: simular una transición y persistirla
   async cambiarEstadoTransaccion(
     transaccionId: string,
     estadoNuevo: EstadoTransaccionSimulada,
   ) {
-    const pago =
-      await this.pagoRepository.buscarPorTransaccion(
-        transaccionId,
-      );
+    const pago = await this.pagoRepository.buscarPorTransaccion(transaccionId);
 
     if (!pago) {
-      throw new NotFoundException(
-        'No existe la transacción solicitada',
-      );
+      throw new NotFoundException('No existe la transacción solicitada');
     }
 
-    // La pasarela valida las transiciones permitidas
+    // Validar las transiciones permitidas
     this.pasarela.cambiarEstado(
       pago.estado as EstadoTransaccionSimulada,
       estadoNuevo,
     );
 
-    // Persistencia condicional para evitar carreras
-    const resultado =
-      await this.pagoRepository.actualizarEstado(
-        transaccionId,
-        pago.estado,
-        estadoNuevo as EstadoPago,
-      );
+    // Actualizar solamente si el estado no ha cambiado
+    const resultado = await this.pagoRepository.actualizarEstado(
+      transaccionId,
+      pago.estado,
+      estadoNuevo as EstadoPago,
+    );
 
     if (resultado.count !== 1) {
       throw new ConflictException(
@@ -201,17 +217,19 @@ export class PagosService {
     return this.consultarTransaccion(transaccionId);
   }
 
+  // =========================================================
+  // Métodos auxiliares
+  // =========================================================
 
-
-
-
-
-  // Verifica que una misma clave no se reutilice
-  // para pagar otro pedido o un importe distinto.
+  // Verificar que la clave no se reutilice con otro pedido
+  // o con un importe diferente
   private verificarReintento(
-    pago: { pedidoId: number; monto: { toString(): string } },
+    pago: {
+      pedidoId: number;
+      monto: { toString(): string };
+    },
     ticket: ProcesarPagoDto['ticket'],
-  ) {
+  ): void {
     if (
       pago.pedidoId !== ticket.id ||
       pago.monto.toString() !== ticket.total.toFixed(2)
@@ -222,6 +240,7 @@ export class PagosService {
     }
   }
 
+  // Identificar errores de unicidad de Prisma
   private esConflictoUnico(error: unknown): boolean {
     return (
       typeof error === 'object' &&
@@ -231,7 +250,7 @@ export class PagosService {
     );
   }
 
-  // Respuesta que recibirá el módulo solicitante
+  // Preparar la respuesta para el módulo solicitante
   private respuestaPago(pago: {
     id: number;
     pedidoId: number;

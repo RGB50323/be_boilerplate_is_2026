@@ -1,6 +1,9 @@
+
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
 import { EstadoPago } from '@PrismaClient';
+
+//----------------------------------------------------------------------------
 
 interface CrearPagoData {
   pedidoId: number;
@@ -9,6 +12,8 @@ interface CrearPagoData {
   monto: number;
   estado: EstadoPago;
 }
+
+//----------------------------------------------------------------------------
 
 @Injectable()
 export class PagoRepository {
@@ -21,7 +26,7 @@ export class PagoRepository {
     });
   }
 
-  // Verificar que el pedido existe
+  // Obtener el pedido y su desglose para validar el ticket
   buscarPedido(pedidoId: number) {
     return this.prisma.pedido.findUnique({
       where: { id: pedidoId },
@@ -64,17 +69,15 @@ export class PagoRepository {
     });
   }
 
-  // Consultar una transacción por su referencia
+  // Consultar una transacción por su identificador
   buscarPorTransaccion(transaccionId: string) {
     return this.prisma.pago.findUnique({
       where: { transaccionId },
     });
   }
 
-
-
-  // Actualización atómica: solamente modifica el pago
-  // si conserva el estado que acabamos de validar.
+  // Actualizar el estado solamente si conserva
+  // el estado que se verificó anteriormente
   actualizarEstado(
     transaccionId: string,
     estadoActual: EstadoPago,
@@ -97,7 +100,7 @@ export class PagoRepository {
     });
   }
 
-  // Recuperar los datos actualizados de la operación
+  // Recuperar los datos actualizados de una transacción
   obtenerEstado(transaccionId: string) {
     return this.prisma.pago.findUnique({
       where: { transaccionId },
@@ -115,7 +118,23 @@ export class PagoRepository {
     });
   }
 
-
-
-
+  // Buscar un pago que impida iniciar otro cobro
+  // utilizando el mismo pedido/ticket
+  buscarPagoBloqueante(pedidoId: number) {
+    return this.prisma.pago.findFirst({
+      where: {
+        pedidoId,
+        estado: {
+          in: [
+            EstadoPago.PENDIENTE,
+            EstadoPago.CONFIRMADO,
+            EstadoPago.REEMBOLSADO,
+          ],
+        },
+      },
+      orderBy: {
+        creadoEn: 'desc',
+      },
+    });
+  }
 }
