@@ -87,6 +87,28 @@ export class ReservacionRepository {
     });
   }
 
+  // Confirmadas que empiezan dentro de la ventana y aún sin recordatorio
+  buscarRecordatoriosPendientes(desde: Date, hasta: Date) {
+    return this.prisma.reservacion.findMany({
+      where: {
+        estado: 'CONFIRMADA',
+        recordatorioEnviadoEn: null,
+        inicio: { gt: desde, lte: hasta },
+      },
+      select: { id: true, inicio: true, creadaEn: true, modificadaEn: true },
+      orderBy: { inicio: 'asc' },
+    });
+  }
+
+  // Solo un proceso gana la marca: evita recordatorios repetidos
+  async marcarRecordatorioEnviado(id: number, ahora: Date): Promise<boolean> {
+    const { count } = await this.prisma.reservacion.updateMany({
+      where: { id, estado: 'CONFIRMADA', recordatorioEnviadoEn: null },
+      data: { recordatorioEnviadoEn: ahora },
+    });
+    return count > 0;
+  }
+
   findSucursalesConHorarios() {
     return this.prisma.sucursal.findMany({
       select: {

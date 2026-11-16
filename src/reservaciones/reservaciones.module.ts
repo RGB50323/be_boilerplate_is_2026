@@ -6,6 +6,7 @@ import {
 } from '@Reservaciones/controllers';
 import {
   AvisosReservacionService,
+  RecordatoriosReservacionService,
   ReservacionesService,
 } from '@Reservaciones/services';
 import { ReservacionRepository } from '@Reservaciones/repositories';
@@ -17,6 +18,7 @@ import { ReservacionRepository } from '@Reservaciones/repositories';
     ReservacionesService,
     ReservacionRepository,
     AvisosReservacionService,
+    RecordatoriosReservacionService,
   ],
   exports: [AvisosReservacionService],
 })
