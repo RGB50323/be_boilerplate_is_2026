@@ -42,6 +42,8 @@ export class TokenService {
     const payload: AccessTokenPayload = {
       sub: user.id,
       email: user.email,
+      rol: user.rol,
+      sucursalId: user.sucursalId,
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
@@ -109,6 +111,16 @@ export class TokenService {
     await this.refreshTokenRepository.revokeByTokenHash(
       this.hashToken(refreshToken),
     );
+  }
+
+  async verifyAccessToken(accessToken: string): Promise<AccessTokenPayload> {
+    try {
+      return await this.jwtService.verifyAsync<AccessTokenPayload>(accessToken);
+    } catch {
+      // Cubre firma inválida, token expirado y token malformado por igual:
+      // no conviene decirle al cliente cuál de los tres fue.
+      throw new UnauthorizedException('Token de acceso inválido o expirado.');
+    }
   }
 
   /** Revoca todas las sesiones activas de un usuario. */

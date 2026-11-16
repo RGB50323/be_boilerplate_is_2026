@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -26,11 +27,12 @@ import { Rol } from '@PrismaClient';
 import { CategoriasService } from '../services/categorias.service.js';
 import {
   CategoriaDeshabilitadaResponseDto,
-  CategoriaListadoResponseDto,
   CategoriaResponseDto,
   GuardarCategoriaDto,
   PlatilloDeCategoriaResponseDto,
 } from '@Categorias/dto';
+import { PaginacionQueryDto } from '@Common/paginacion';
+import { CategoriasPaginadasResponseDto } from '../dto/categorias-paginadas-response.dto.js';
 
 @ApiTags('Categorías')
 @ApiBearerAuth()
@@ -88,11 +90,25 @@ export class CategoriasController {
 
   @Get()
   @ApiOperation({
-    summary: 'Lista todas las categorías, incluidas las deshabilitadas',
+    summary: 'Lista las categorías, incluidas las deshabilitadas (paginado)',
+    description: '10 por página.',
   })
-  @ApiOkResponse({ type: [CategoriaListadoResponseDto] })
-  listar(): Promise<CategoriaListadoResponseDto[]> {
-    return this.categoriasService.listar();
+  @ApiOkResponse({ type: CategoriasPaginadasResponseDto })
+  @ApiBadRequestResponse({ description: 'Página menor a 1 o inválida.' })
+  listar(
+    @Query() query: PaginacionQueryDto,
+  ): Promise<CategoriasPaginadasResponseDto> {
+    return this.categoriasService.listar(query.pagina);
+  }
+
+  @Get('activas')
+  @ApiOperation({
+    summary: 'Lista todas las categorías activas, sin paginar',
+    description: 'Para los selectores de los formularios.',
+  })
+  @ApiOkResponse({ type: [CategoriaResponseDto] })
+  listarActivas(): Promise<CategoriaResponseDto[]> {
+    return this.categoriasService.listarActivas();
   }
 
   @Get(':id/platillos')

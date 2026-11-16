@@ -6,6 +6,7 @@ import {
 import { MenuQueryDto } from '../dto/menu-query.dto.js';
 import { CategoriaMenuDto, MenuResponseDto } from '../dto/menu-response.dto.js';
 import { MenuRepository } from '../repository/menu.repository.js';
+import { redondearPromedio } from '@Resenas/utils';
 
 const normalizar = (texto: string) =>
   texto
@@ -47,11 +48,19 @@ export class MenuService {
     });
 
     const texto = q ? normalizar(q.trim()) : '';
+    const visibles = texto
+      ? filas.filter((f) => normalizar(f.platillo.nombre).includes(texto))
+      : filas;
+
+    const resumenes = visibles.length
+      ? await this.repository.resumenResenas(visibles.map((f) => f.platillo.id))
+      : [];
+    const resenas = new Map(resumenes.map((r) => [r.platilloId, r]));
     const categorias = new Map<number, CategoriaMenuDto>();
 
-    for (const fila of filas) {
+    for (const fila of visibles) {
       const { platillo } = fila;
-      if (texto && !normalizar(platillo.nombre).includes(texto)) continue;
+      const resumen = resenas.get(platillo.id);
 
       let categoria = categorias.get(platillo.categoria.id);
       if (!categoria) {
@@ -70,6 +79,8 @@ export class MenuService {
         precio: Number(fila.precio),
         imagenUrl: platillo.imagenUrl,
         disponibilidad: fila.disponibilidad,
+        promedio: redondearPromedio(resumen?._avg.estrellas),
+        totalResenas: resumen?._count._all ?? 0,
       });
     }
 
@@ -77,7 +88,11 @@ export class MenuService {
       sucursalId,
       categorias: [...categorias.values()]
         .sort(porNombre)
-        .map((c) => ({ id: c.id, nombre: c.nombre, platillos: c.platillos.sort(porNombre) })),
+        .map((c) => ({
+          id: c.id,
+          nombre: c.nombre,
+          platillos: c.platillos.sort(porNombre),
+        })),
     };
   }
 }
