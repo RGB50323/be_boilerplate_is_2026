@@ -4,6 +4,7 @@ import {
   ApiBadRequestResponse,
   ApiProduces,
   ApiBearerAuth,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -23,7 +24,9 @@ import { Rol } from '@PrismaClient';
 
 @ApiTags('Dashboard')
 @ApiBearerAuth()
+// RolesGuard es global (app.module.ts): @Roles solo declara quién puede entrar.
 @Roles(Rol.GERENTE_GENERAL)
+@ApiForbiddenResponse({ description: 'Solo para GERENTE_GENERAL.' })
 @Controller('dashboard')
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}

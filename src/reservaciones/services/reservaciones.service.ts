@@ -1,22 +1,102 @@
 import {
   BadRequestException,
   Injectable,
+  ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 import { ReservacionRepository } from '@Reservaciones/repositories';
 import type {
   ConsultarDisponibilidadDto,
+  CrearReservacionDto,
+  ReservacionResponseDto,
   MesaDisponibleResponseDto,
   SucursalResponseDto,
 } from '@Reservaciones/dto';
 
-const DURACION_MINUTOS = 120;
-// America/El_Salvador usa UTC-06:00.
-const DESFASE_EL_SALVADOR = '-06:00';
+import {
+  diaDeReserva,
+  validarHorarioReservacion,
+} from '../utils/horario-reservacion.js';
+import { paginar } from '@Common/paginacion';
 
 @Injectable()
 export class ReservacionesService {
   constructor(private readonly reservacionRepository: ReservacionRepository) {}
+
+  async crear(
+    clienteId: string,
+    datos: CrearReservacionDto,
+  ): Promise<ReservacionResponseDto> {
+    const mesa = await this.reservacionRepository.findMesaConHorario(
+      datos.mesaId,
+      diaDeReserva(datos.fecha),
+    );
+    if (!mesa?.activa)
+      throw new NotFoundException(
+        'La mesa no existe o está inactiva. Elegí otra mesa.',
+      );
+    if (datos.personas > mesa.capacidad) {
+      const message = `Esta mesa admite hasta ${mesa.capacidad} personas.`;
+      throw new BadRequestException({
+        statusCode: 400,
+        message,
+        errores: { personas: message },
+      });
+    }
+    const { inicio, fin } = validarHorarioReservacion(
+      datos.fecha,
+      datos.hora,
+      mesa.sucursal.horarios[0],
+    );
+    const reservacion = await this.reservacionRepository.crearConfirmada({
+      mesaId: mesa.id,
+      clienteId,
+      nombre: datos.nombre,
+      telefono: datos.telefono,
+      correo: datos.correo,
+      personas: datos.personas,
+      inicio,
+      fin,
+    });
+    if (!reservacion)
+      throw new ConflictException(
+        'La mesa ya no está disponible en ese horario. Elegí otra mesa.',
+      );
+    return this.respuesta(reservacion);
+  }
+
+  async listarMias(clienteId: string, pagina: number) {
+    const [reservaciones, total] =
+      await this.reservacionRepository.listarPorCliente(clienteId, pagina, 10);
+    return paginar(
+      reservaciones.map((r) => this.respuesta(r)),
+      total,
+      pagina,
+      10,
+    );
+  }
+
+  private respuesta(
+    reservacion: NonNullable<
+      Awaited<ReturnType<ReservacionRepository['crearConfirmada']>>
+    >,
+  ): ReservacionResponseDto {
+    // El almacenamiento es UTC; la respuesta utiliza la misma hora local de H09.
+    const local = new Date(
+      reservacion.inicio.getTime() - 6 * 60 * 60_000,
+    ).toISOString();
+    return {
+      reservacionId: `R-${String(reservacion.id).padStart(6, '0')}`,
+      estado: reservacion.estado,
+      mesaId: reservacion.mesaId,
+      mesa: reservacion.mesa.numero,
+      sucursalId: reservacion.mesa.sucursalId,
+      sucursal: reservacion.mesa.sucursal.nombre,
+      fecha: local.slice(0, 10),
+      hora: local.slice(11, 16),
+      personas: reservacion.personas,
+    };
+  }
 
   async listarSucursales(): Promise<SucursalResponseDto[]> {
     const sucursales =
@@ -38,9 +118,7 @@ export class ReservacionesService {
     sucursalId: number,
     { fecha, hora, personas }: ConsultarDisponibilidadDto,
   ): Promise<MesaDisponibleResponseDto[]> {
-    const inicio = new Date(`${fecha}T${hora}:00${DESFASE_EL_SALVADOR}`);
-    const fin = new Date(inicio.getTime() + DURACION_MINUTOS * 60_000);
-    const diaSemana = new Date(`${fecha}T00:00:00Z`).getUTCDay();
+    const diaSemana = diaDeReserva(fecha);
     const sucursal = await this.reservacionRepository.findSucursalConHorario(
       sucursalId,
       diaSemana,
@@ -53,42 +131,11 @@ export class ReservacionesService {
         errores: { sucursalId: 'La sucursal solicitada no existe.' },
       });
     }
-    if (inicio.getTime() < Date.now()) {
-      const message =
-        'Horario no válido: la fecha y hora no pueden estar en el pasado.';
-      throw new BadRequestException({
-        statusCode: 400,
-        message,
-        errores: { fecha: message, hora: message },
-      });
-    }
-
-    const horario = sucursal.horarios[0];
-    if (!horario) {
-      const message =
-        'Horario no válido: la sucursal no atiende en la fecha solicitada.';
-      throw new BadRequestException({
-        statusCode: 400,
-        message,
-        errores: { fecha: message },
-      });
-    }
-
-    const [horas, minutos] = hora.split(':').map(Number);
-    const inicioMinutos = horas * 60 + minutos;
-    const apertura =
-      horario.apertura.getUTCHours() * 60 + horario.apertura.getUTCMinutes();
-    const cierre =
-      horario.cierre.getUTCHours() * 60 + horario.cierre.getUTCMinutes();
-    if (inicioMinutos < apertura || inicioMinutos + DURACION_MINUTOS > cierre) {
-      const message =
-        'Horario no válido: elegí una hora que permita las 2 horas completas dentro del horario de atención.';
-      throw new BadRequestException({
-        statusCode: 400,
-        message,
-        errores: { hora: message },
-      });
-    }
+    const { inicio, fin } = validarHorarioReservacion(
+      fecha,
+      hora,
+      sucursal.horarios[0],
+    );
 
     const mesas = await this.reservacionRepository.findMesasDisponibles({
       sucursalId,

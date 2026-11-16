@@ -1,14 +1,14 @@
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import { APP_GUARD } from '@nestjs/core';
-import { JwtService } from '@nestjs/jwt';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { DashboardController } from '../dist/dashboard/controllers/dashboard.controller.js';
 import { DashboardService } from '../dist/dashboard/services/dashboard.service.js';
 import { DashboardRepository } from '../dist/dashboard/repositories/dashboard.repository.js';
 import { JwtAuthGuard } from '../dist/auth/guards/jwt-auth.guard.js';
-import { UsersService } from '../dist/users/services/users.service.js';
+import { RolesGuard } from '../dist/auth/guards/roles.guard.js';
+import { AuthService } from '../dist/auth/services/auth.service.js';
 import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
 
 const hora = (value: string) => new Date(`1970-01-01T${value}:00Z`);
@@ -45,9 +45,19 @@ beforeAll(async () => {
     providers: [
       DashboardService,
       { provide: DashboardRepository, useValue: repo },
-      { provide: JwtService, useValue: { verifyAsync: verificarToken } },
-      { provide: UsersService, useValue: { findById: buscarUsuario } },
+      {
+        // JwtAuthGuard valida el token con AuthService y carga el usuario.
+        provide: AuthService,
+        useValue: {
+          authenticateAccessToken: async (token: string) => {
+            await verificarToken(token);
+            return buscarUsuario();
+          },
+        },
+      },
+      // Mismo orden que app.module.ts: primero el token, luego el rol.
       { provide: APP_GUARD, useClass: JwtAuthGuard },
+      { provide: APP_GUARD, useClass: RolesGuard },
     ],
   }).compile();
   app = module.createNestApplication();

@@ -45,7 +45,8 @@ model User {
   apellido   String?   @db.VarChar(80)
 
   refreshTokens     RefreshToken[]
-  pedidos           Pedido[]
+  pedidos           Pedido[]           @relation("PedidoCliente")
+  pedidosTomados    Pedido[]           @relation("PedidoMesero")
   itemsEntregados   DetallePedido[]    @relation("ItemEntregadoPor")
   reservaciones     Reservacion[]
   cuentaPuntos      CuentaPuntos?
@@ -299,6 +300,7 @@ model Pedido {
   sucursalId    Int          @map("sucursal_id")
   mesaId        Int?         @map("mesa_id")
   clienteId     String?      @map("cliente_id") @db.Uuid
+  meseroId      String?      @map("mesero_id") @db.Uuid
   nombreCliente String?      @map("nombre_cliente") @db.VarChar(120)
 
   subtotal   Decimal @default(0) @db.Decimal(10, 2)
@@ -312,7 +314,8 @@ model Pedido {
 
   sucursal Sucursal @relation(fields: [sucursalId], references: [id])
   mesa     Mesa?    @relation(fields: [mesaId], references: [id])
-  cliente  User?    @relation(fields: [clienteId], references: [id])
+  cliente  User?    @relation("PedidoCliente", fields: [clienteId], references: [id])
+  mesero   User?    @relation("PedidoMesero", fields: [meseroId], references: [id])
 
   detalles          DetallePedido[]
   pagos             Pago[]
@@ -325,6 +328,7 @@ model Pedido {
   @@index([sucursalId, estado, creadoEn])
   @@index([clienteId])
   @@index([mesaId])
+  @@index([meseroId])
   @@map("pedido")
 }
 
@@ -336,6 +340,7 @@ model DetallePedido {
   precioUnitario Decimal    @map("precio_unitario") @db.Decimal(10, 2)
   nota           String?    @db.VarChar(200)
   estado         EstadoItem @default(PENDIENTE)
+  enviadoEn      DateTime   @default(now()) @map("enviado_en")
   listoEn        DateTime?  @map("listo_en")
   entregadoEn    DateTime?  @map("entregado_en")
   entregadoPorId String?    @map("entregado_por_id") @db.Uuid

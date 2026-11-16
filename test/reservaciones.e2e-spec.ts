@@ -1,7 +1,6 @@
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import { APP_GUARD } from '@nestjs/core';
-import { JwtService } from '@nestjs/jwt';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 // Se prueba el artefacto compilado para conservar metadata de los decoradores de Nest.
@@ -9,7 +8,7 @@ import { ReservacionesController } from '../dist/reservaciones/controllers/reser
 import { ReservacionesService } from '../dist/reservaciones/services/reservaciones.service.js';
 import { ReservacionRepository } from '../dist/reservaciones/repositories/reservacion.repository.js';
 import { JwtAuthGuard } from '../dist/auth/guards/jwt-auth.guard.js';
-import { UsersService } from '../dist/users/services/users.service.js';
+import { AuthService } from '../dist/auth/services/auth.service.js';
 import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
 const hora = (value: string) => new Date(`1970-01-01T${value}:00Z`);
 const repo = {
@@ -25,8 +24,10 @@ beforeAll(async () => {
     providers: [
       ReservacionesService,
       { provide: ReservacionRepository, useValue: repo },
-      { provide: JwtService, useValue: { verifyAsync: verificarToken } },
-      { provide: UsersService, useValue: { findById: vi.fn() } },
+      {
+        provide: AuthService,
+        useValue: { authenticateAccessToken: verificarToken },
+      },
       { provide: APP_GUARD, useClass: JwtAuthGuard },
     ],
   }).compile();
