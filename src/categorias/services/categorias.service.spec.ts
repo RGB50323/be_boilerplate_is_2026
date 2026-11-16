@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@PrismaClient';
 import { CategoriasRepository } from '@Categorias/repositories';
-import { CategoriasService } from './categorias.service.js';
+import { CATEGORIAS_POR_PAGINA, CategoriasService } from './categorias.service.js';
 
 function errorPrisma(code: string) {
   return new Prisma.PrismaClientKnownRequestError('error', {
@@ -19,6 +19,7 @@ function crearContexto() {
     crear: vi.fn(),
     renombrar: vi.fn(),
     listar: vi.fn(),
+    listarActivas: vi.fn(),
     buscarPorId: vi.fn(),
     contarPlatillosActivos: vi.fn(),
     deshabilitar: vi.fn(),
@@ -93,42 +94,73 @@ describe('CategoriasService', () => {
   });
 
   describe('listar', () => {
-    it('devuelve las categorías con la cantidad de platillos activos', async () => {
+    it('devuelve las categorías paginadas con la cantidad de platillos activos', async () => {
       const { service, repository } = crearContexto();
       const deshabilitadaEn = new Date('2026-11-01T10:00:00.000Z');
-      repository.listar.mockResolvedValue([
-        {
-          id: 1,
-          nombre: 'Entradas',
-          activa: true,
-          deshabilitadaEn: null,
-          _count: { platillos: 3 },
-        },
-        {
-          id: 5,
-          nombre: 'Temporada',
-          activa: false,
-          deshabilitadaEn,
-          _count: { platillos: 0 },
-        },
-      ]);
+      repository.listar.mockResolvedValue({
+        total: 14,
+        categorias: [
+          {
+            id: 1,
+            nombre: 'Entradas',
+            activa: true,
+            deshabilitadaEn: null,
+            _count: { platillos: 3 },
+          },
+          {
+            id: 5,
+            nombre: 'Temporada',
+            activa: false,
+            deshabilitadaEn,
+            _count: { platillos: 0 },
+          },
+        ],
+      });
 
-      await expect(service.listar()).resolves.toEqual([
-        {
-          id: 1,
-          nombre: 'Entradas',
-          activa: true,
-          deshabilitadaEn: null,
-          platillosActivos: 3,
-        },
-        {
-          id: 5,
-          nombre: 'Temporada',
-          activa: false,
-          deshabilitadaEn,
-          platillosActivos: 0,
-        },
-      ]);
+      await expect(service.listar(1)).resolves.toEqual({
+        pagina: 1,
+        totalPaginas: 2,
+        total: 14,
+        datos: [
+          {
+            id: 1,
+            nombre: 'Entradas',
+            activa: true,
+            deshabilitadaEn: null,
+            platillosActivos: 3,
+          },
+          {
+            id: 5,
+            nombre: 'Temporada',
+            activa: false,
+            deshabilitadaEn,
+            platillosActivos: 0,
+          },
+        ],
+      });
+      expect(repository.listar).toHaveBeenCalledWith(0, CATEGORIAS_POR_PAGINA);
+    });
+
+    it('calcula el salto según la página', async () => {
+      const { service, repository } = crearContexto();
+      repository.listar.mockResolvedValue({ total: 14, categorias: [] });
+
+      await service.listar(2);
+
+      expect(repository.listar).toHaveBeenCalledWith(
+        CATEGORIAS_POR_PAGINA,
+        CATEGORIAS_POR_PAGINA,
+      );
+    });
+  });
+
+  describe('listarActivas', () => {
+    it('devuelve las categorías activas sin paginar', async () => {
+      const { service, repository } = crearContexto();
+      const activas = [{ id: 1, nombre: 'Entradas', activa: true }];
+      repository.listarActivas.mockResolvedValue(activas);
+
+      await expect(service.listarActivas()).resolves.toEqual(activas);
     });
   });
 

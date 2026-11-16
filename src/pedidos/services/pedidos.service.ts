@@ -15,7 +15,7 @@ import type {
   PedidoCreadoResponseDto,
   PedidoTotalResponseDto,
   MesaResponseDto,
-  PedidoDetalleResponseDto
+  PedidoDetalleResponseDto,
 } from '../dto/index.js';
 import {
   DisponibilidadInsuficienteError,
@@ -34,7 +34,7 @@ const SIN_PERMISO_VER = 'No tienes permiso para ver este recurso.';
 
 @Injectable()
 export class PedidosService {
-  constructor(private readonly repository: PedidosRepository) { }
+  constructor(private readonly repository: PedidosRepository) {}
 
   async crear(
     dto: CrearPedidoDto,
@@ -43,6 +43,9 @@ export class PedidosService {
     const sucursalId = usuario.sucursalId;
     if (sucursalId === null) throw new ForbiddenException(SIN_PERMISO);
 
+    if (dto.mesaId === undefined) {
+      throw new BadRequestException('La mesa es obligatoria.');
+    }
     const mesa = await this.repository.buscarMesa(dto.mesaId);
     if (mesa === null) throw new NotFoundException('La mesa no existe.');
     if (mesa.sucursalId !== sucursalId) {
@@ -246,7 +249,7 @@ export class PedidosService {
     );
   }
 
-  private traducir(error: unknown): unknown {
+  traducir(error: unknown): unknown {
     if (error instanceof DisponibilidadInsuficienteError) {
       return new UnprocessableEntityException(
         'Un platillo se quedó sin disponibilidad. Revisa el pedido.',
@@ -256,7 +259,9 @@ export class PedidosService {
       return new ConflictException(ITEM_LISTO);
     }
     if (error instanceof PedidoSinItemsError) {
-      return new ConflictException('El pedido debe conservar al menos un platillo.');
+      return new ConflictException(
+        'El pedido debe conservar al menos un platillo.',
+      );
     }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -267,7 +272,7 @@ export class PedidosService {
     return error;
   }
 
-  private async armarItems(
+  async armarItems(
     pedidos: CrearPedidoDto['items'],
     sucursalId: number,
   ): Promise<ItemNuevo[]> {

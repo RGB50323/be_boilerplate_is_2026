@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
+import { EstadoResena } from '@PrismaClient';
 
 export type FiltrosMenu = {
   categoriaId?: number;
@@ -40,6 +41,16 @@ export class MenuRepository {
           },
         },
       },
+    });
+  }
+
+  // Promedio y total de reseñas visibles por platillo
+  resumenResenas(platilloIds: number[]) {
+    return this.prisma.resena.groupBy({
+      by: ['platilloId'],
+      where: { platilloId: { in: platilloIds }, estado: EstadoResena.VISIBLE },
+      _avg: { estrellas: true },
+      _count: { _all: true },
     });
   }
 }

@@ -7,8 +7,10 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -35,14 +37,33 @@ export class ItemPedidoDto {
 }
 
 export class CrearPedidoDto {
-  @ApiProperty({ example: 'MESA', enum: ['MESA'] })
-  @IsIn(['MESA'], { message: 'Solo se admiten pedidos de mesa.' })
-  tipo!: 'MESA';
+  @ApiProperty({ example: 'MESA', enum: ['MESA', 'LLEVAR'] })
+  @IsIn(['MESA', 'LLEVAR'], { message: 'El tipo de pedido no es válido.' })
+  tipo!: 'MESA' | 'LLEVAR';
 
-  @ApiProperty({ example: 7 })
+  @ApiPropertyOptional({ example: 7, description: 'Obligatorio si tipo es MESA.' })
+  @ValidateIf((o: CrearPedidoDto) => o.tipo === 'MESA')
   @IsInt({ message: 'La mesa es obligatoria.' })
   @Min(1, { message: 'La mesa es obligatoria.' })
-  mesaId!: number;
+  mesaId?: number;
+
+  @ApiPropertyOptional({ example: 1, description: 'Obligatorio si tipo es LLEVAR.' })
+  @ValidateIf((o: CrearPedidoDto) => o.tipo === 'LLEVAR')
+  @IsInt({ message: 'La sucursal es obligatoria.' })
+  @Min(1, { message: 'La sucursal es obligatoria.' })
+  sucursalId?: number;
+
+  @ApiPropertyOptional({
+    example: 'Ana López',
+    maxLength: 120,
+    description: 'Obligatorio si tipo es LLEVAR (nombre y apellido).',
+  })
+  @ValidateIf((o: CrearPedidoDto) => o.tipo === 'LLEVAR')
+  @Transform(recortar)
+  @IsString({ message: 'Ingresa tu nombre completo.' })
+  @Matches(/^\S+(\s+\S+)+$/, { message: 'Ingresa tu nombre completo.' })
+  @MaxLength(120, { message: 'El nombre no puede superar los 120 caracteres.' })
+  nombreCliente?: string;
 
   @ApiProperty({ type: [ItemPedidoDto] })
   @IsArray({ message: 'Los platillos deben enviarse como una lista.' })
