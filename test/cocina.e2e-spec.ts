@@ -44,7 +44,10 @@ describe('Cocina (e2e)', () => {
       ),
     );
     ids.sucursales = [sucursalA.id, sucursalB.id];
-    const mesa = await prisma.mesa.create({ data: { sucursalId: sucursalA.id, numero: 3 } });
+    const mesas = await Promise.all(
+      [3, 4].map((numero) => prisma.mesa.create({ data: { sucursalId: sucursalA.id, numero } })),
+    );
+    const mesasLibres = mesas.map((m) => m.id);
 
     const passwordHash = await bcrypt.hash(PASSWORD, 4);
     const crearUsuario = (nombre: string, rol: Rol, sucursalId: number | null) =>
@@ -77,7 +80,7 @@ describe('Cocina (e2e)', () => {
           sucursalId,
           tipo,
           estado,
-          mesaId: tipo === TipoPedido.MESA && sucursalId === sucursalA.id ? mesa.id : null,
+          mesaId: tipo === TipoPedido.MESA && sucursalId === sucursalA.id ? mesasLibres.shift() : null,
           creadoEn: new Date(Date.now() - minutosAtras * 60_000),
           detalles: {
             create: estadosItems.map((estadoItem) => ({
