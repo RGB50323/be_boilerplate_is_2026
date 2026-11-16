@@ -24,6 +24,14 @@ export class ItemCocinaDto {
 
   @ApiProperty({ enum: EstadoItem, enumName: 'EstadoItem' })
   estado!: EstadoItem;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Hora en que se marcó listo, en ISO 8601. null si sigue pendiente.',
+  })
+  listoEn!: string | null;
 }
 
 export class PedidoCocinaDto {
@@ -86,6 +94,7 @@ export class PedidoCocinaDto {
         cantidad: detalle.cantidad,
         nota: detalle.nota,
         estado: detalle.estado,
+        listoEn: detalle.listoEn?.toISOString() ?? null,
       })),
     };
   }

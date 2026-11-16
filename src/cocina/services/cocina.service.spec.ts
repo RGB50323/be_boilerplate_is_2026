@@ -218,8 +218,22 @@ describe('CocinaService', () => {
       expect(service.toDto(pedido())).toMatchObject({
         creadoEn: minutosAntes(5).toISOString(),
         items: [
-          { id: 100, platillo: 'Hamburguesa', cantidad: 2, nota: 'Sin cebolla', estado: 'PENDIENTE' },
+          { id: 100, platillo: 'Hamburguesa', cantidad: 2, nota: 'Sin cebolla', estado: 'PENDIENTE', listoEn: null },
         ],
+      });
+    });
+
+    it('expone listoEn en ISO 8601 en los ítems ya listos', () => {
+      const base = pedido();
+      const conItemListo = pedido({
+        detalles: [
+          { ...base.detalles[0], estado: EstadoItem.LISTO, listoEn: minutosAntes(2) },
+        ],
+      });
+
+      expect(service.toDto(conItemListo).items[0]).toMatchObject({
+        estado: 'LISTO',
+        listoEn: minutosAntes(2).toISOString(),
       });
     });
   });
