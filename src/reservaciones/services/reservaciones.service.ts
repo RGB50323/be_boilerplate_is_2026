@@ -14,14 +14,20 @@ import type {
 } from '@Reservaciones/dto';
 
 import {
+  codigoReservacion,
   diaDeReserva,
+  fechaHoraLocal,
   validarHorarioReservacion,
 } from '../utils/horario-reservacion.js';
 import { paginar } from '@Common/paginacion';
+import { AvisosReservacionService } from './avisos-reservacion.service.js';
 
 @Injectable()
 export class ReservacionesService {
-  constructor(private readonly reservacionRepository: ReservacionRepository) {}
+  constructor(
+    private readonly reservacionRepository: ReservacionRepository,
+    private readonly avisos: AvisosReservacionService,
+  ) {}
 
   async crear(
     clienteId: string,
@@ -62,6 +68,7 @@ export class ReservacionesService {
       throw new ConflictException(
         'La mesa ya no está disponible en ese horario. Elegí otra mesa.',
       );
+    await this.avisos.creada(reservacion.id);
     return this.respuesta(reservacion);
   }
 
@@ -82,18 +89,16 @@ export class ReservacionesService {
     >,
   ): ReservacionResponseDto {
     // El almacenamiento es UTC; la respuesta utiliza la misma hora local de H09.
-    const local = new Date(
-      reservacion.inicio.getTime() - 6 * 60 * 60_000,
-    ).toISOString();
+    const { fecha, hora } = fechaHoraLocal(reservacion.inicio);
     return {
-      reservacionId: `R-${String(reservacion.id).padStart(6, '0')}`,
+      reservacionId: codigoReservacion(reservacion.id),
       estado: reservacion.estado,
       mesaId: reservacion.mesaId,
       mesa: reservacion.mesa.numero,
       sucursalId: reservacion.mesa.sucursalId,
       sucursal: reservacion.mesa.sucursal.nombre,
-      fecha: local.slice(0, 10),
-      hora: local.slice(11, 16),
+      fecha,
+      hora,
       personas: reservacion.personas,
     };
   }

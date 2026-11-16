@@ -71,6 +71,22 @@ export class ReservacionRepository {
     );
   }
 
+  buscarParaAviso(id: number) {
+    return this.prisma.reservacion.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        clienteId: true,
+        personas: true,
+        inicio: true,
+        modificadaEn: true,
+        mesa: {
+          select: { numero: true, sucursal: { select: { nombre: true } } },
+        },
+      },
+    });
+  }
+
   findSucursalesConHorarios() {
     return this.prisma.sucursal.findMany({
       select: {
