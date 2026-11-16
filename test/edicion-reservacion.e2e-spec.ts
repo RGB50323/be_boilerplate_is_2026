@@ -242,6 +242,28 @@ describe.skipIf(!url)('H11 con PostgreSQL real', () => {
       }),
     ).toBe(1);
   });
+  it('impide mover una reserva ya iniciada a una fecha futura', async () => {
+    const inicio = new Date(Date.now() - 60_000);
+    await prisma.reservacion.update({
+      where: { id: reservaId },
+      data: {
+        inicio,
+        fin: new Date(inicio.getTime() + 7_200_000),
+      },
+    });
+    const respuesta = await patch().expect(400);
+    expect(respuesta.body.message).toContain('todavía no haya comenzado');
+    await request(app.getHttpServer())
+      .get(ruta() + '/mesas-disponibles')
+      .auth(usuarios[0], { type: 'bearer' })
+      .query(base)
+      .expect(400);
+    const original = await prisma.reservacion.findUniqueOrThrow({
+      where: { id: reservaId },
+    });
+    expect(original.inicio).toEqual(inicio);
+    expect(original.modificadaEn).toBeNull();
+  });
   it('si falla el servicio de avisos revierte la modificación', async () => {
     vi.spyOn(avisos, 'notificar').mockRejectedValueOnce(
       new Error('Fallo simulado'),

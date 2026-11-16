@@ -42,6 +42,10 @@ export class EdicionReservacionService {
       throw new BadRequestException(
         'Solo podés modificar una reservación confirmada.',
       );
+    if (reserva.inicio.getTime() <= Date.now())
+      throw new BadRequestException(
+        'Solo podés modificar una reservación próxima que todavía no haya comenzado.',
+      );
   }
 
   private respuesta(reserva: ReservaEditable) {
