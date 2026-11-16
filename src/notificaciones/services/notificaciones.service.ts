@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { EstadoCorreo, ModuloOrigen, Rol } from '@PrismaClient';
+import { EstadoCorreo, ModuloOrigen, Rol, type Prisma } from '@PrismaClient';
 import { NotificacionRepository } from '@Notificaciones/repositories';
 import { ValidacionAvisoError } from '@Notificaciones/errors';
 import type {
@@ -41,7 +41,14 @@ export class NotificacionesService {
     private readonly retrasoReintentoCorreoMs: number,
   ) {}
 
-  async notificar(aviso: Aviso): Promise<ResultadoNotificacion> {
+  async notificar(
+    aviso: Aviso,
+    tx?: Prisma.TransactionClient,
+  ): Promise<ResultadoNotificacion> {
+    // Una transacción solo registra avisos internos: nunca envía correos antes del commit.
+    if (tx && aviso.enviarCorreo) {
+      throw new Error('El envío de correo no admite una transacción externa.');
+    }
     const avisoValidado = this.validarAviso(aviso);
     const destinatarios = await this.resolverDestinatarios(avisoValidado);
 
@@ -63,6 +70,7 @@ export class NotificacionesService {
           ? EstadoCorreo.PENDIENTE
           : null,
       })),
+      ...(tx ? ([tx] as const) : []),
     );
 
     if (avisoValidado.enviarCorreo && registradas > 0) {

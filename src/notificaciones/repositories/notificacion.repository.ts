@@ -45,9 +45,12 @@ export class NotificacionRepository {
     });
   }
 
-  async crearMuchas(data: CrearNotificacionData[]): Promise<number> {
+  async crearMuchas(
+    data: CrearNotificacionData[],
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
     try {
-      const resultado = await this.prisma.notificacion.createMany({
+      const resultado = await (tx ?? this.prisma).notificacion.createMany({
         data,
         skipDuplicates: true,
       });
