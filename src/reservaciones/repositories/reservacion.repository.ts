@@ -4,6 +4,7 @@ import { Prisma } from '@PrismaClient';
 import { saltoDePagina } from '@Common/paginacion';
 
 export interface DisponibilidadFiltro {
+  excluirReservacionId?: number;
   sucursalId: number;
   personas: number;
   inicio: Date;
@@ -103,6 +104,7 @@ export class ReservacionRepository {
     personas,
     inicio,
     fin,
+    excluirReservacionId,
   }: DisponibilidadFiltro) {
     return this.prisma.mesa.findMany({
       where: {
@@ -111,6 +113,9 @@ export class ReservacionRepository {
         capacidad: { gte: personas },
         reservaciones: {
           none: {
+            ...(excluirReservacionId === undefined
+              ? {}
+              : { id: { not: excluirReservacionId } }),
             estado: 'CONFIRMADA',
             // Intervalos [inicio, fin): una reserva puede empezar cuando otra termina.
             inicio: { lt: fin },

@@ -50,7 +50,7 @@ export class NotificacionesService {
       throw new Error('El envío de correo no admite una transacción externa.');
     }
     const avisoValidado = this.validarAviso(aviso);
-    const destinatarios = await this.resolverDestinatarios(avisoValidado);
+    const destinatarios = await this.resolverDestinatarios(avisoValidado, tx);
 
     if (destinatarios.length === 0) {
       return { registradas: 0, omitidasPorDuplicado: 0 };
@@ -70,7 +70,7 @@ export class NotificacionesService {
           ? EstadoCorreo.PENDIENTE
           : null,
       })),
-      ...(tx ? ([tx] as const) : []),
+      tx,
     );
 
     if (avisoValidado.enviarCorreo && registradas > 0) {
@@ -107,16 +107,19 @@ export class NotificacionesService {
 
   private async resolverDestinatarios(
     aviso: Aviso,
+    tx?: Prisma.TransactionClient,
   ): Promise<DestinatarioResuelto[]> {
     if ('usuarioId' in aviso.destinatario) {
       // Usuario inexistente o inactivo: se omite
       return this.repository.resolverUsuarioActivo(
         aviso.destinatario.usuarioId as string,
+        tx,
       );
     }
     return this.repository.resolverGrupoActivo(
       aviso.destinatario.rol,
       aviso.destinatario.sucursalId,
+      tx,
     );
   }
 

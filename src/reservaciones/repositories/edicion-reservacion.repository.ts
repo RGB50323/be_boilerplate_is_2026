@@ -9,6 +9,8 @@ export type ReservaEditable = Prisma.ReservacionGetPayload<{
   include: typeof detalle;
 }>;
 
+export class MesaNoDisponibleError extends Error {}
+
 @Injectable()
 export class EdicionReservacionRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -28,18 +30,34 @@ export class EdicionReservacionRepository {
       tx: Prisma.TransactionClient,
     ) => Promise<T>,
   ) {
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(
-        Prisma.sql`SELECT id FROM reservacion WHERE id = ${id} AND cliente_id = ${clienteId}::uuid FOR UPDATE`,
-      );
-      return operacion(await this.buscar(id, clienteId, tx), tx);
-    });
+    return this.prisma
+      .$transaction(async (tx) => {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT id FROM reservacion WHERE id = ${id} AND cliente_id = ${clienteId}::uuid FOR UPDATE`,
+        );
+        return operacion(await this.buscar(id, clienteId, tx), tx);
+      })
+      .catch((error: unknown) => {
+        // Traducimos después del rollback: una violación de exclusión deja la
+        // transacción abortada y no se puede continuar devolviendo null desde guardar.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2010' &&
+          (error.meta?.code === '23P01' ||
+            (
+              error.meta?.driverAdapterError as
+                { cause?: { originalCode?: string } } | undefined
+            )?.cause?.originalCode === '23P01')
+        ) {
+          throw new MesaNoDisponibleError('La mesa no está disponible.');
+        }
+        throw error;
+      });
   }
 
   mesa(id: number, tx: Prisma.TransactionClient) {
     return tx.mesa.findUnique({
       where: { id },
-      include: { sucursal: { include: { horarios: true } } },
     });
   }
 
@@ -63,31 +81,6 @@ export class EdicionReservacionRepository {
     return tx.reservacion.findUniqueOrThrow({
       where: { id },
       include: detalle,
-    });
-  }
-
-  alternativas(
-    reserva: ReservaEditable,
-    personas: number,
-    inicio: Date,
-    fin: Date,
-  ) {
-    return this.prisma.mesa.findMany({
-      where: {
-        sucursalId: reserva.mesa.sucursalId,
-        activa: true,
-        capacidad: { gte: personas },
-        reservaciones: {
-          none: {
-            id: { not: reserva.id },
-            estado: 'CONFIRMADA',
-            inicio: { lt: fin },
-            fin: { gt: inicio },
-          },
-        },
-      },
-      select: { id: true, numero: true, capacidad: true, zona: true },
-      orderBy: { numero: 'asc' },
     });
   }
 }

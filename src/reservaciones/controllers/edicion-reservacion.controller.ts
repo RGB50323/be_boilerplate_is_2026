@@ -10,12 +10,9 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@Auth/decorators';
 import type { User } from '@PrismaClient';
-import {
-  IdReservacionDto,
-  ModificarReservacionDto,
-} from '../dto/modificar-reservacion.dto.js';
-import { ConsultarDisponibilidadDto } from '../dto/consultar-disponibilidad.dto.js';
-import { EdicionReservacionService } from '../services/edicion-reservacion.service.js';
+import { IdReservacionDto, ModificarReservacionDto } from '@Reservaciones/dto';
+import { ConsultarDisponibilidadDto } from '@Reservaciones/dto';
+import { EdicionReservacionService } from '@Reservaciones/services';
 
 @ApiTags('reservaciones')
 @ApiBearerAuth()
@@ -23,7 +20,7 @@ import { EdicionReservacionService } from '../services/edicion-reservacion.servi
 export class EdicionReservacionController {
   constructor(private readonly service: EdicionReservacionService) {}
 
-  @Get(':id')
+  @Get('R-:id')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary: 'Detalle de una reservación del cliente autenticado',
@@ -32,7 +29,7 @@ export class EdicionReservacionController {
     return this.service.detalle(params.id, usuario.id);
   }
 
-  @Patch(':id')
+  @Patch('R-:id')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary:
@@ -46,7 +43,7 @@ export class EdicionReservacionController {
     return this.service.modificar(params.id, usuario.id, datos);
   }
 
-  @Get(':id/mesas-disponibles')
+  @Get('R-:id/mesas-disponibles')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary: 'Mesas alternativas excluyendo la propia reservación',

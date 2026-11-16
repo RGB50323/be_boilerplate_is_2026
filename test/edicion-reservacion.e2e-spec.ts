@@ -9,6 +9,9 @@ import { PrismaClient } from '../dist/generated/prisma/client.js';
 import { PrismaService } from '../dist/prisma/services/prisma.service.js';
 import { EdicionReservacionController } from '../dist/reservaciones/controllers/edicion-reservacion.controller.js';
 import { EdicionReservacionService } from '../dist/reservaciones/services/edicion-reservacion.service.js';
+import { ReservacionRepository } from '../dist/reservaciones/repositories/reservacion.repository.js';
+import { ReservasClienteController } from '../dist/reservaciones/controllers/reservas-cliente.controller.js';
+import { ReservacionesService } from '../dist/reservaciones/services/reservaciones.service.js';
 import { EdicionReservacionRepository } from '../dist/reservaciones/repositories/edicion-reservacion.repository.js';
 import { NotificacionesService } from '../dist/notificaciones/services/notificaciones.service.js';
 import { NotificacionRepository } from '../dist/notificaciones/repositories/notificacion.repository.js';
@@ -17,7 +20,8 @@ import { AuthService } from '../dist/auth/services/auth.service.js';
 import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
 
 const url = process.env.TEST_DATABASE_URL;
-describe.skipIf(!url)('H11 con PostgreSQL real', () => {
+const baseTemporal = url && new URL(url).pathname === '/h11_test';
+describe.skipIf(!baseTemporal)('H11 con PostgreSQL real', () => {
   let prisma: PrismaClient;
   let app: INestApplication;
   let sucursalId: number;
@@ -54,11 +58,15 @@ describe.skipIf(!url)('H11 con PostgreSQL real', () => {
     if (!url || new URL(url).pathname !== '/h11_test')
       throw new Error('Usá una base temporal llamada h11_test.');
     prisma = new PrismaClient({
-      adapter: new PrismaPg({ connectionString: url }),
+      adapter: new PrismaPg({ connectionString: url, max: 1 }),
     });
     for (const id of usuarios)
       await prisma.user.create({
-        data: { id, email: id + '@example.test', passwordHash: 'no-utilizado' },
+        data: {
+          id,
+          email: id + '@example.test',
+          passwordHash: 'no-utilizado',
+        },
       });
     const sucursal = await prisma.sucursal.create({
       data: {
@@ -85,9 +93,11 @@ describe.skipIf(!url)('H11 con PostgreSQL real', () => {
       0,
     );
     const module = await Test.createTestingModule({
-      controllers: [EdicionReservacionController],
+      controllers: [EdicionReservacionController, ReservasClienteController],
       providers: [
         EdicionReservacionService,
+        ReservacionRepository,
+        ReservacionesService,
         EdicionReservacionRepository,
         { provide: PrismaService, useValue: prisma },
         { provide: NotificacionesService, useValue: avisos },
@@ -155,6 +165,24 @@ describe.skipIf(!url)('H11 con PostgreSQL real', () => {
     });
     expect(notificaciones).toHaveLength(2);
     expect(notificaciones.some((n) => n.mensaje.includes('15:00'))).toBe(true);
+  });
+  it('conserva versión y no avisa cuando se guarda sin cambios', async () => {
+    const respuesta = await patch().expect(200);
+    expect(respuesta.body.version).toBe(version);
+    expect(respuesta.body.modificadaEn).toBeNull();
+    await patch().expect(200);
+    expect(
+      await prisma.notificacion.count({
+        where: { destinatarioId: usuarios[0] },
+      }),
+    ).toBe(0);
+  });
+  it('mias funciona con el controlador dinámico registrado primero', async () => {
+    const respuesta = await request(app.getHttpServer())
+      .get('/reservaciones/mias')
+      .auth(usuarios[0], { type: 'bearer' })
+      .expect(200);
+    expect(respuesta.body.total).toBe(1);
   });
   it('requiere sesión y oculta las reservaciones ajenas', async () => {
     await request(app.getHttpServer()).patch(ruta()).send(datos()).expect(401);

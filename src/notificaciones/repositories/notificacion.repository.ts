@@ -28,8 +28,11 @@ export interface CrearNotificacionData {
 export class NotificacionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  resolverUsuarioActivo(usuarioId: string): Promise<DestinatarioResuelto[]> {
-    return this.prisma.user.findMany({
+  resolverUsuarioActivo(
+    usuarioId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<DestinatarioResuelto[]> {
+    return (tx ?? this.prisma).user.findMany({
       where: { id: usuarioId, isActive: true },
       select: { id: true, email: true },
     });
@@ -38,8 +41,9 @@ export class NotificacionRepository {
   resolverGrupoActivo(
     rol: Rol,
     sucursalId: number,
+    tx?: Prisma.TransactionClient,
   ): Promise<DestinatarioResuelto[]> {
-    return this.prisma.user.findMany({
+    return (tx ?? this.prisma).user.findMany({
       where: { rol, sucursalId, isActive: true },
       select: { id: true, email: true },
     });

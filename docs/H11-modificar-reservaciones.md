@@ -43,3 +43,12 @@ npx vitest run --config vitest.config.e2e.ts test/edicion-reservacion.e2e-spec.t
 ```
 
 La suite cubre propiedad/sesión, validaciones, canceladas, alternativas, rollback, avisos y concurrencia tanto sobre una misma reserva como entre dos reservas distintas.
+
+## Ajustes del review
+
+- La resolución de destinatarios y la creación del aviso usan la misma transacción. La suite H11 se ejecuta con un pool de una conexión para cubrir este caso.
+- Guardar los mismos datos no cambia la versión ni registra avisos.
+- Las rutas usan el prefijo literal `R-` para no capturar `/reservaciones/mias`, independientemente del orden de los controladores.
+- El repositorio traduce el conflicto SQL a un error de dominio después del rollback; el servicio no depende del formato de errores de Prisma.
+- H09/H10/H11 comparten el formateo de respuestas y la consulta de disponibilidad, que admite excluir la reserva editada.
+- Las suites temporales de H10 y H11 se omiten cuando `TEST_DATABASE_URL` corresponde a la otra historia, en lugar de fallar por el nombre de la base.

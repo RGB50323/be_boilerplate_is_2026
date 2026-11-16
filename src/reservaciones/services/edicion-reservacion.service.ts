@@ -4,24 +4,33 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ModuloOrigen, Prisma } from '@PrismaClient';
+import { ModuloOrigen } from '@PrismaClient';
 import { NotificacionesService } from '@Notificaciones/services';
 import {
   EdicionReservacionRepository,
+  ReservacionRepository,
+  MesaNoDisponibleError,
   type ReservaEditable,
-} from '../repositories/edicion-reservacion.repository.js';
-import type { ModificarReservacionDto } from '../dto/modificar-reservacion.dto.js';
-import type { ConsultarDisponibilidadDto } from '../dto/consultar-disponibilidad.dto.js';
+} from '@Reservaciones/repositories';
+import type { ModificarReservacionDto } from '@Reservaciones/dto';
+import type { ConsultarDisponibilidadDto } from '@Reservaciones/dto';
 import {
   diaDeReserva,
   validarHorarioReservacion,
 } from '../utils/horario-reservacion.js';
+
+import {
+  resumenReservacion,
+  horarioRespuesta,
+  mesaDisponibleRespuesta,
+} from '../utils/reservacion-respuesta.js';
 
 @Injectable()
 export class EdicionReservacionService {
   constructor(
     private readonly repository: EdicionReservacionRepository,
     private readonly avisos: NotificacionesService,
+    private readonly disponibilidad: ReservacionRepository,
   ) {}
 
   private id(valor: string) {
@@ -49,27 +58,12 @@ export class EdicionReservacionService {
   }
 
   private respuesta(reserva: ReservaEditable) {
-    const local = new Date(
-      reserva.inicio.getTime() - 6 * 60 * 60_000,
-    ).toISOString();
     return {
-      reservacionId: `R-${String(reserva.id).padStart(6, '0')}`,
-      estado: reserva.estado,
-      mesaId: reserva.mesaId,
-      mesa: reserva.mesa.numero,
+      ...resumenReservacion(reserva),
       capacidad: reserva.mesa.capacidad,
-      sucursalId: reserva.mesa.sucursalId,
-      sucursal: reserva.mesa.sucursal.nombre,
-      fecha: local.slice(0, 10),
-      hora: local.slice(11, 16),
-      personas: reserva.personas,
       version: (reserva.modificadaEn ?? reserva.creadaEn).toISOString(),
       modificadaEn: reserva.modificadaEn?.toISOString() ?? null,
-      horarios: reserva.mesa.sucursal.horarios.map((h) => ({
-        diaSemana: h.diaSemana,
-        apertura: h.apertura.toISOString().slice(11, 16),
-        cierre: h.cierre.toISOString().slice(11, 16),
-      })),
+      horarios: reserva.mesa.sucursal.horarios.map(horarioRespuesta),
     };
   }
 
@@ -94,13 +88,14 @@ export class EdicionReservacionService {
         (h) => h.diaSemana === diaDeReserva(datos.fecha),
       ),
     );
-    const mesas = await this.repository.alternativas(
-      reserva,
-      datos.personas,
+    const mesas = await this.disponibilidad.findMesasDisponibles({
+      sucursalId: reserva.mesa.sucursalId,
+      personas: datos.personas,
       inicio,
       fin,
-    );
-    return mesas.map(({ id: mesaId, ...mesa }) => ({ mesaId, ...mesa }));
+      excluirReservacionId: reserva.id,
+    });
+    return mesas.map(mesaDisponibleRespuesta);
   }
 
   async modificar(
@@ -141,10 +136,18 @@ export class EdicionReservacionService {
           const { inicio, fin } = validarHorarioReservacion(
             datos.fecha,
             datos.hora,
-            mesa.sucursal.horarios.find(
+            reserva.mesa.sucursal.horarios.find(
               (h) => h.diaSemana === diaDeReserva(datos.fecha),
             ),
           );
+          if (
+            reserva.mesaId === datos.mesaId &&
+            reserva.personas === datos.personas &&
+            reserva.inicio.getTime() === inicio.getTime() &&
+            reserva.fin.getTime() === fin.getTime()
+          ) {
+            return this.respuesta(reserva);
+          }
           const actualizada = await this.repository.guardar(
             reserva.id,
             {
@@ -177,15 +180,7 @@ export class EdicionReservacionService {
         },
       );
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2010' &&
-        (error.meta?.code === '23P01' ||
-          (
-            error.meta?.driverAdapterError as
-              { cause?: { originalCode?: string } } | undefined
-          )?.cause?.originalCode === '23P01')
-      ) {
+      if (error instanceof MesaNoDisponibleError) {
         throw new ConflictException({
           message:
             'La mesa ya no está disponible. Tus datos originales se conservaron; elegí otra mesa.',
