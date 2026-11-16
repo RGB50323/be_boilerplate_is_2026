@@ -139,6 +139,23 @@ describe('Marcar platillo listo (e2e)', () => {
     expect(pedido.estado).toBe(EstadoPedido.ENVIADO_COCINA);
   });
 
+  it('el tablero conserva la hora del platillo listo al consultarlo de nuevo', async () => {
+    const { pedidoId, itemIds } = await crearPedido(sucursales.a, 2);
+    await marcar(itemIds[0]).expect(200);
+
+    const res = await request(app.getHttpServer())
+      .get('/cocina/pedidos')
+      .set('Authorization', `Bearer ${tokens.cocinaA}`)
+      .expect(200);
+
+    const enTablero = (res.body as PedidoCocinaDto[]).find((p) => p.id === pedidoId);
+    const item = await prisma.detallePedido.findUniqueOrThrow({ where: { id: itemIds[0] } });
+    expect(enTablero?.items).toEqual([
+      expect.objectContaining({ id: itemIds[0], estado: 'LISTO', listoEn: item.listoEn?.toISOString() }),
+      expect.objectContaining({ id: itemIds[1], estado: 'PENDIENTE', listoEn: null }),
+    ]);
+  });
+
   it('marcar el último platillo pasa el pedido a LISTO', async () => {
     const { pedidoId, itemIds } = await crearPedido(sucursales.a, 2);
     await marcar(itemIds[0]).expect(200);
@@ -228,7 +245,12 @@ describe('Marcar platillo listo (e2e)', () => {
 
       const [item, pedido] = await Promise.all([itemListo, pedidoListo]);
       expect(item.id).toBe(pedidoId);
-      expect(item.items[0]).toMatchObject({ id: itemIds[0], estado: 'LISTO' });
+      const guardado = await prisma.detallePedido.findUniqueOrThrow({ where: { id: itemIds[0] } });
+      expect(item.items[0]).toMatchObject({
+        id: itemIds[0],
+        estado: 'LISTO',
+        listoEn: guardado.listoEn?.toISOString(),
+      });
       expect(pedido.id).toBe(pedidoId);
     } finally {
       socket.disconnect();

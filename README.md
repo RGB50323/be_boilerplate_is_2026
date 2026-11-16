@@ -417,8 +417,8 @@ curl $BASE/cocina/pedidos -H "Authorization: Bearer $ACCESS_TOKEN"
     "minutosEspera": 22,         // calculado por el servidor al responder
     "retrasado": true,           // minutosEspera > COCINA_MINUTOS_RETRASO
     "items": [
-      { "id": 101, "platillo": "Hamburguesa", "cantidad": 2, "nota": "Una sin cebolla", "estado": "PENDIENTE" },
-      { "id": 102, "platillo": "Limonada con soda", "cantidad": 2, "nota": null, "estado": "LISTO" }
+      { "id": 101, "platillo": "Hamburguesa", "cantidad": 2, "nota": "Una sin cebolla", "estado": "PENDIENTE", "listoEn": null },
+      { "id": 102, "platillo": "Limonada con soda", "cantidad": 2, "nota": null, "estado": "LISTO", "listoEn": "2026-11-06T05:58:00.000Z" }
     ]
   }
 ]
@@ -485,7 +485,7 @@ curl -X PATCH $BASE/cocina/items/301/listo -H "Authorization: Bearer $ACCESS_TOK
 ```
 
 - Marca el ítem como `LISTO` y guarda `listo_en`. Si ya no queda ningún ítem `PENDIENTE` en el pedido, el pedido pasa a `LISTO`. `pedidoEstado` es el estado del pedido después del cambio.
-- `listoEn` es la hora local de El Salvador en `HH:mm`.
+- `listoEn` es la hora local de El Salvador en `HH:mm`. En `GET /cocina/pedidos` y en los eventos del socket, cada ítem trae `listoEn` en ISO 8601 (o `null` si sigue pendiente), igual que `creadoEn`.
 - Después del commit publica `item:listo` y, si el pedido se completó, `pedido:listo`. También publica `pedido:actualizado` o `pedido:retirado`, así el tablero de H06 se actualiza sin cambios.
 - La sucursal sale siempre del usuario autenticado.
 - Errores: `401` sin sesión; `403` si el rol no es `COCINA` ni `GERENTE`, si el usuario no tiene sucursal o si el platillo es de otra sucursal; `404` si el platillo no existe; `409` si el platillo ya está listo o el pedido no está en cocina (sin pagar, cancelado, entregado).
