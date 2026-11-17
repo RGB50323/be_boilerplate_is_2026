@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { PagosModule } from '@Pagos';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuthModule } from '@Auth';
 import { JwtAuthGuard, RolesGuard } from '@Auth/guards';
@@ -34,6 +35,7 @@ import { ResenasModule } from '@Resenas';
     AuthModule,
     MenuModule,
     ReservacionesModule,
+    PagosModule,
     DashboardModule,
     CocinaModule,
     CategoriasModule,
