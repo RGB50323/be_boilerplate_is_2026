@@ -14,16 +14,10 @@ import {
 } from '@Cocina/errors';
 import { PedidoCocinaRepository } from '@Cocina/repositories';
 import { EstadoItem, type User } from '@PrismaClient';
+import { formatearHoraLocal } from '@Common/fechas';
 import { CocinaEventsService } from './cocina-events.service.js';
 
 const SIN_PERMISO = 'No tienes permiso para modificar este platillo.';
-
-const horaLocal = new Intl.DateTimeFormat('es-SV', {
-  timeZone: 'America/El_Salvador',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
 
 @Injectable()
 export class CocinaItemsService {
@@ -62,7 +56,7 @@ export class CocinaItemsService {
     return {
       itemId: marcado.itemId,
       estado: EstadoItem.LISTO,
-      listoEn: horaLocal.format(marcado.listoEn),
+      listoEn: formatearHoraLocal(marcado.listoEn),
       pedidoEstado: marcado.pedidoEstado,
     };
   }
