@@ -33,7 +33,9 @@ export class PagoRepository {
       select: {
         id: true,
         numero: true,
+        tipo: true,
         estado: true,
+        clienteId: true,
         total: true,
         sucursalId: true,
         actualizadoEn: true,
@@ -71,10 +73,17 @@ export class PagoRepository {
 
   // Consultar una transacción por su identificador
   buscarPorTransaccion(transaccionId: string) {
-    return this.prisma.pago.findUnique({
-      where: { transaccionId },
-    });
-  }
+  return this.prisma.pago.findUnique({
+    where: { transaccionId },
+    include: {
+      pedido: {
+        select: {
+          tipo: true,
+        },
+      },
+    },
+  });
+}
 
   // Actualizar el estado solamente si conserva
   // el estado que se verificó anteriormente

@@ -1,14 +1,25 @@
+
 import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
-import { EstadoPago, Prisma } from '@PrismaClient';
+import {
+  EstadoPago,
+  EstadoPedido,
+  Prisma,
+  Rol,
+  TipoPedido,
+  type User,
+} from '@PrismaClient';
+
 import { ProcesarPagoDto } from '@Pagos/dto';
 import { PagoRepository } from '../repositories/pago.repository.js';
+import { PedidosLlevarService } from '../../pedidos/services/pedidos-llevar.service.js';
 
 import {
   PasarelaSimuladaService,
@@ -20,16 +31,27 @@ export class PagosService {
   constructor(
     private readonly pagoRepository: PagoRepository,
     private readonly pasarela: PasarelaSimuladaService,
+    private readonly pedidosLlevarService: PedidosLlevarService,
   ) {}
 
   // =========================================================
   // BE-16.1: Procesar pago mediante pasarela simulada
   // =========================================================
 
-  async procesarPago(datos: ProcesarPagoDto) {
+  async procesarPago(datos: ProcesarPagoDto, usuario: User) {
     const { solicitudId, ticket } = datos;
 
-    // 1. Verificar si la solicitud ya existe
+    // 1. Verificar que el pedido exista
+    const pedido = await this.pagoRepository.buscarPedido(ticket.id);
+
+    if (!pedido) {
+      throw new NotFoundException(`No existe el pedido ${ticket.id}`);
+    }
+
+    // 2. Verificar autorización antes de devolver cualquier pago
+    this.validarAutorizacion(pedido, usuario);
+
+    // 3. Verificar idempotencia
     const pagoExistente =
       await this.pagoRepository.buscarPorSolicitud(solicitudId);
 
@@ -38,17 +60,10 @@ export class PagosService {
       return this.respuestaPago(pagoExistente);
     }
 
-    // 2. Verificar que el pedido exista
-    const pedido = await this.pagoRepository.buscarPedido(ticket.id);
-
-    if (!pedido) {
-      throw new NotFoundException(`No existe el pedido ${ticket.id}`);
-    }
-
-    // 3. Validar el ticket contra los datos de H04
+    // 4. Validar estado y contenido del ticket
     this.validarTicket(ticket, pedido);
 
-    // 4. Verificar si existe otro pago que impida cobrar
+    // 5. Verificar si hay otro pago que impida cobrar
     const pagoBloqueante = await this.pagoRepository.buscarPagoBloqueante(
       ticket.id,
     );
@@ -59,10 +74,10 @@ export class PagosService {
       );
     }
 
-    // 5. Ejecutar la pasarela simulada
+    // 6. Ejecutar la pasarela simulada
     const resultado = this.pasarela.procesarPago(String(ticket.id));
 
-    // 6. Validar la respuesta inicial del simulador
+    // 7. Validar respuesta inicial del simulador
     if (
       !resultado ||
       !resultado.transaccionId ||
@@ -72,7 +87,7 @@ export class PagosService {
       throw new BadGatewayException('Respuesta inválida del simulador');
     }
 
-    // 7. Registrar el pago
+    // 8. Registrar el pago
     try {
       const pago = await this.pagoRepository.crear({
         pedidoId: ticket.id,
@@ -88,14 +103,12 @@ export class PagosService {
         const existente =
           await this.pagoRepository.buscarPorSolicitud(solicitudId);
 
-        // Misma solicitud: recuperar el pago original
+        // Recuperar operación anterior con la misma clave
         if (existente) {
           this.verificarReintento(existente, ticket);
           return this.respuestaPago(existente);
         }
 
-        // Otra solicitud: PostgreSQL impidió
-        // crear un segundo pago activo para el pedido
         throw new ConflictException(
           'El pedido ya tiene una operación de pago activa',
         );
@@ -106,28 +119,42 @@ export class PagosService {
   }
 
   // =========================================================
-  // Validación del ticket recibido contra el pedido de H04
+  // Validación del ticket contra H04
   // =========================================================
 
   private validarTicket(
     ticket: ProcesarPagoDto['ticket'],
-    pedido: NonNullable<Awaited<ReturnType<PagoRepository['buscarPedido']>>>,
+    pedido: NonNullable<
+      Awaited<ReturnType<PagoRepository['buscarPedido']>>
+    >,
   ): void {
-    // Comparar el total recibido con el registrado
+    if (pedido.estado === EstadoPedido.CANCELADO) {
+      throw new ConflictException(
+        'No se puede procesar el pago de un pedido cancelado',
+      );
+    }
+
+    if (
+      pedido.tipo === TipoPedido.LLEVAR &&
+      pedido.estado !== EstadoPedido.PENDIENTE_PAGO
+    ) {
+      throw new ConflictException(
+        'El pedido para llevar no está pendiente de pago',
+      );
+    }
+
     if (!new Prisma.Decimal(ticket.total).eq(pedido.total)) {
       throw new BadRequestException(
         'El total del ticket no coincide con el pedido',
       );
     }
 
-    // Verificar que coincida la cantidad de líneas
     if (ticket.items.length !== pedido.detalles.length) {
       throw new BadRequestException(
         'Los artículos del ticket no coinciden con el pedido',
       );
     }
 
-    // Normalizar las líneas sin depender del orden
     const lineasTicket = ticket.items
       .map((item) => {
         const precio = new Prisma.Decimal(item.precio_unitario);
@@ -161,7 +188,6 @@ export class PagosService {
       })
       .sort();
 
-    // Comparar cada línea del ticket con el pedido
     for (let i = 0; i < lineasTicket.length; i++) {
       if (lineasTicket[i] !== lineasPedido[i]) {
         throw new BadRequestException(
@@ -189,19 +215,20 @@ export class PagosService {
     transaccionId: string,
     estadoNuevo: EstadoTransaccionSimulada,
   ) {
-    const pago = await this.pagoRepository.buscarPorTransaccion(transaccionId);
+    const pago =
+      await this.pagoRepository.buscarPorTransaccion(transaccionId);
 
     if (!pago) {
       throw new NotFoundException('No existe la transacción solicitada');
     }
 
-    // Validar las transiciones permitidas
+    // Validar transición de la pasarela
     this.pasarela.cambiarEstado(
       pago.estado as EstadoTransaccionSimulada,
       estadoNuevo,
     );
 
-    // Actualizar solamente si el estado no ha cambiado
+    // Actualización condicionada al estado anterior
     const resultado = await this.pagoRepository.actualizarEstado(
       transaccionId,
       pago.estado,
@@ -214,6 +241,14 @@ export class PagosService {
       );
     }
 
+    // Integración con H05 para pedidos para llevar
+    if (
+      estadoNuevo === EstadoTransaccionSimulada.CONFIRMADO &&
+      pago.pedido.tipo === TipoPedido.LLEVAR
+    ) {
+      await this.pedidosLlevarService.confirmarPago(pago.pedidoId);
+    }
+
     return this.consultarTransaccion(transaccionId);
   }
 
@@ -221,18 +256,16 @@ export class PagosService {
   // Métodos auxiliares
   // =========================================================
 
-  // Verificar que la clave no se reutilice con otro pedido
-  // o con un importe diferente
   private verificarReintento(
     pago: {
       pedidoId: number;
-      monto: { toString(): string };
+      monto: Prisma.Decimal;
     },
     ticket: ProcesarPagoDto['ticket'],
   ): void {
     if (
       pago.pedidoId !== ticket.id ||
-      pago.monto.toString() !== ticket.total.toFixed(2)
+      !new Prisma.Decimal(ticket.total).eq(pago.monto)
     ) {
       throw new ConflictException(
         'La solicitud ya existe con datos diferentes',
@@ -240,7 +273,6 @@ export class PagosService {
     }
   }
 
-  // Identificar errores de unicidad de Prisma
   private esConflictoUnico(error: unknown): boolean {
     return (
       typeof error === 'object' &&
@@ -250,7 +282,6 @@ export class PagosService {
     );
   }
 
-  // Preparar la respuesta para el módulo solicitante
   private respuestaPago(pago: {
     id: number;
     pedidoId: number;
@@ -263,5 +294,62 @@ export class PagosService {
       transaccionId: pago.transaccionId,
       estado: pago.estado,
     };
+  }
+
+  // =========================================================
+  // Autorización de operaciones
+  // =========================================================
+
+private validarAutorizacion(
+  pedido: NonNullable<
+    Awaited<ReturnType<PagoRepository['buscarPedido']>>
+  >,
+  usuario: User,
+  ): void {
+    // Pedidos para llevar
+    if (pedido.tipo === TipoPedido.LLEVAR) {
+      if (usuario.rol === Rol.CLIENTE) {
+        if (pedido.clienteId !== usuario.id) {
+          throw new ForbiddenException(
+            'No tienes permiso para pagar este pedido',
+          );
+        }
+        return;
+      }
+
+      if (usuario.rol === Rol.GERENTE_GENERAL) {
+        return;
+      }
+
+      throw new ForbiddenException(
+        'No tienes permiso para pagar este pedido',
+      );
+    }
+
+    // Pedidos en mesa
+    if (pedido.tipo === TipoPedido.MESA) {
+      if (
+        usuario.rol === Rol.MESERO ||
+        usuario.rol === Rol.GERENTE
+      ) {
+        if (
+          usuario.sucursalId === null ||
+          usuario.sucursalId !== pedido.sucursalId
+        ) {
+          throw new ForbiddenException(
+            'No tienes permiso para pagar pedidos de esta sucursal',
+          );
+        }
+        return;
+      }
+
+      if (usuario.rol === Rol.GERENTE_GENERAL) {
+        return;
+      }
+    }
+
+    throw new ForbiddenException(
+      'No tienes permiso para procesar este pago',
+    );
   }
 }

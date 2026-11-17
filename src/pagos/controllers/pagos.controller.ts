@@ -7,11 +7,12 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { Roles } from '@Auth/decorators';
-import { Rol } from '@PrismaClient';
+import { CurrentUser, Roles } from '@Auth/decorators';
+import { Rol, type User } from '@PrismaClient';
 import { ProcesarPagoDto } from '@Pagos/dto';
 import { PagosService } from '@Pagos/services';
 import { CambiarEstadoPagoDto } from '../dto/cambiar-estado-pago.dto.js';
+
 
 @Controller('pagos')
 export class PagosController {
@@ -20,8 +21,17 @@ export class PagosController {
   ) {}
 
   @Post('procesar')
-  async procesarPago(@Body() datos: ProcesarPagoDto) {
-    return this.pagosService.procesarPago(datos);
+  @Roles(
+    Rol.CLIENTE,
+    Rol.MESERO,
+    Rol.GERENTE,
+    Rol.GERENTE_GENERAL,
+  )
+  async procesarPago(
+    @Body() datos: ProcesarPagoDto,
+    @CurrentUser() usuario: User,
+  ) {
+    return this.pagosService.procesarPago(datos, usuario);
   }
 
   @Get('transaccion/:transaccionId')
