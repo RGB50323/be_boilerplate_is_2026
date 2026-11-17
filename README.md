@@ -323,6 +323,7 @@ Base: `http://localhost:3000/api/v1` · Documentación interactiva: `http://loca
 | `POST` | `/auth/logout` | — | `204` | Cierra la sesión |
 | `GET` | `/auth/me` | Bearer | `200` | Usuario autenticado |
 | `GET` | `/cocina/pedidos` | Bearer · `COCINA`, `GERENTE`, `GERENTE_GENERAL` | `200` | Pedidos pendientes de cocina de la sucursal del usuario |
+| `PATCH` | `/cocina/items/:itemId/listo` | Bearer · `COCINA`, `GERENTE` | `200` | Marca un platillo como listo (H07) |
 | `GET` | `/dashboard/ventas` | Bearer · `GERENTE_GENERAL` | `200` | Ventas por sucursal con ticket promedio, total general, platillos y horarios pico |
 | `GET` | `/dashboard/ventas/detalle` | Bearer · `GERENTE_GENERAL` | `200` | Ventas confirmadas, una por pedido, paginadas |
 | `GET` | `/dashboard/ventas/exportar` | Bearer · `GERENTE_GENERAL` | `200` | CSV de ventas por sucursal y total general |
@@ -422,8 +423,8 @@ curl $BASE/cocina/pedidos -H "Authorization: Bearer $ACCESS_TOKEN"
     "minutosEspera": 22,         // calculado por el servidor al responder
     "retrasado": true,           // minutosEspera > COCINA_MINUTOS_RETRASO
     "items": [
-      { "id": 101, "platillo": "Hamburguesa", "cantidad": 2, "nota": "Una sin cebolla", "estado": "PENDIENTE" },
-      { "id": 102, "platillo": "Limonada con soda", "cantidad": 2, "nota": null, "estado": "LISTO" }
+      { "id": 101, "platillo": "Hamburguesa", "cantidad": 2, "nota": "Una sin cebolla", "estado": "PENDIENTE", "listoEn": null },
+      { "id": 102, "platillo": "Limonada con soda", "cantidad": 2, "nota": null, "estado": "LISTO", "listoEn": "2026-11-06T05:58:00.000Z" }
     ]
   }
 ]
@@ -456,6 +457,8 @@ socket.on('pedido:retirado', ({ id }) => { /* quitar por id */ });
 | `pedido:nuevo` | `PedidoCocinaDto` | Un pedido llega a cocina |
 | `pedido:actualizado` | `PedidoCocinaDto` | Cambia un pedido que sigue en la cola (por ejemplo, un ítem pasa a `LISTO`) |
 | `pedido:retirado` | `{ id: number }` | El pedido ya no tiene ítems `PENDIENTE`, o se canceló |
+| `item:listo` | `PedidoCocinaDto` | Se marcó un platillo como listo (H07) |
+| `pedido:listo` | `PedidoCocinaDto` | Ese platillo era el último pendiente y el pedido pasó a `LISTO` (H07) |
 
 - La conexión se rechaza en el handshake (el cliente recibe `connect_error`) con las mismas reglas que el endpoint.
 - Cada socket se une a la room `sucursal:{sucursalId}` de su usuario y solo recibe los eventos de esa sucursal.
@@ -475,6 +478,24 @@ await this.cocinaEvents.pedidoActualizado(pedido.id);
 ```
 
 El servicio relee el pedido, decide qué evento corresponde (`nuevo`, `actualizado` o `retirado`) y lo publica en `EventEmitter2`. `CocinaGateway` lo escucha y lo reenvía a la room de la sucursal. Así quien cambia un pedido no depende de Socket.IO.
+
+### Marcar un platillo como listo (H07)
+
+```bash
+curl -X PATCH $BASE/cocina/items/301/listo -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+```jsonc
+// 200 OK
+{ "itemId": 301, "estado": "LISTO", "listoEn": "12:18", "pedidoEstado": "LISTO" }
+```
+
+- Marca el ítem como `LISTO` y guarda `listo_en`. Si ya no queda ningún ítem `PENDIENTE` en el pedido, el pedido pasa a `LISTO`. `pedidoEstado` es el estado del pedido después del cambio.
+- `listoEn` es la hora local de El Salvador en `HH:mm`. En `GET /cocina/pedidos` y en los eventos del socket, cada ítem trae `listoEn` en ISO 8601 (o `null` si sigue pendiente), igual que `creadoEn`.
+- Después del commit publica `item:listo` y, si el pedido se completó, `pedido:listo`. También publica `pedido:actualizado` o `pedido:retirado`, así el tablero de H06 se actualiza sin cambios.
+- La sucursal sale siempre del usuario autenticado.
+- Errores: `401` sin sesión; `403` si el rol no es `COCINA` ni `GERENTE`, si el usuario no tiene sucursal o si el platillo es de otra sucursal; `404` si el platillo no existe; `409` si el platillo ya está listo o el pedido no está en cocina (sin pagar, cancelado, entregado).
+- **Concurrencia:** la transacción bloquea la fila del ítem y la del pedido (`SELECT … FOR UPDATE`). Si dos cocineros marcan el mismo platillo a la vez, uno recibe `200` y el otro `409`. Si marcan a la vez los dos últimos platillos de un pedido, el pedido igual termina en `LISTO`.
 
 ---
 
