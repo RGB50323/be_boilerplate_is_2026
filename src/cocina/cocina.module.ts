@@ -3,7 +3,11 @@ import { AuthModule } from '@Auth';
 import { CocinaController } from '@Cocina/controllers';
 import { CocinaGateway } from '@Cocina/gateways';
 import { PedidoCocinaRepository } from '@Cocina/repositories';
-import { CocinaEventsService, CocinaService } from '@Cocina/services';
+import {
+  CocinaEventsService,
+  CocinaItemsService,
+  CocinaService,
+} from '@Cocina/services';
 
 @Module({
   imports: [AuthModule],
@@ -11,6 +15,7 @@ import { CocinaEventsService, CocinaService } from '@Cocina/services';
   providers: [
     CocinaService,
     CocinaEventsService,
+    CocinaItemsService,
     PedidoCocinaRepository,
     CocinaGateway,
   ],

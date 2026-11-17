@@ -17,6 +17,7 @@ API REST construida con **NestJS 12**, **Prisma 7** y **PostgreSQL 18**, con aut
 - [Autenticación](#autenticación)
 - [Endpoints](#endpoints)
 - [Cocina: pedidos pendientes (H06)](#cocina-pedidos-pendientes-h06)
+- [Dashboard de ventas (H28)](#dashboard-de-ventas-h28)
 - [Paginación común](#paginación-común)
 - [Arquitectura por capas](#arquitectura-por-capas)
 - [Path aliases](#path-aliases)
@@ -270,6 +271,8 @@ Además crea dos sucursales (Centro y Escalón), mesas, el menú y pedidos de ej
 | `E-0001` | Escalón | Mesa 2, más de 15 minutos de espera | Solo para Escalón |
 | `E-0002` | Escalón | Para llevar | Solo para Escalón |
 
+También crea **pedidos de demostración** (`DEMO-00001`, …) de los últimos 45 días para el dashboard de ventas, con pagos confirmados, pendientes, rechazados y reembolsados. No tienen mesa y sus ítems ya están cerrados, así que no aparecen en cocina. Si ya existen no se duplican; para regenerarlos con fechas recientes usá `npm run db:reset`.
+
 ---
 
 ## Autenticación
@@ -320,6 +323,10 @@ Base: `http://localhost:3000/api/v1` · Documentación interactiva: `http://loca
 | `POST` | `/auth/logout` | — | `204` | Cierra la sesión |
 | `GET` | `/auth/me` | Bearer | `200` | Usuario autenticado |
 | `GET` | `/cocina/pedidos` | Bearer · `COCINA`, `GERENTE`, `GERENTE_GENERAL` | `200` | Pedidos pendientes de cocina de la sucursal del usuario |
+| `PATCH` | `/cocina/items/:itemId/listo` | Bearer · `COCINA`, `GERENTE` | `200` | Marca un platillo como listo (H07) |
+| `GET` | `/dashboard/ventas` | Bearer · `GERENTE_GENERAL` | `200` | Ventas por sucursal con ticket promedio, total general, platillos y horarios pico |
+| `GET` | `/dashboard/ventas/detalle` | Bearer · `GERENTE_GENERAL` | `200` | Ventas confirmadas, una por pedido, paginadas |
+| `GET` | `/dashboard/ventas/exportar` | Bearer · `GERENTE_GENERAL` | `200` | CSV de ventas por sucursal y total general |
 
 ### Ejemplos
 
@@ -416,8 +423,8 @@ curl $BASE/cocina/pedidos -H "Authorization: Bearer $ACCESS_TOKEN"
     "minutosEspera": 22,         // calculado por el servidor al responder
     "retrasado": true,           // minutosEspera > COCINA_MINUTOS_RETRASO
     "items": [
-      { "id": 101, "platillo": "Hamburguesa", "cantidad": 2, "nota": "Una sin cebolla", "estado": "PENDIENTE" },
-      { "id": 102, "platillo": "Limonada con soda", "cantidad": 2, "nota": null, "estado": "LISTO" }
+      { "id": 101, "platillo": "Hamburguesa", "cantidad": 2, "nota": "Una sin cebolla", "estado": "PENDIENTE", "listoEn": null },
+      { "id": 102, "platillo": "Limonada con soda", "cantidad": 2, "nota": null, "estado": "LISTO", "listoEn": "2026-11-06T05:58:00.000Z" }
     ]
   }
 ]
@@ -450,6 +457,8 @@ socket.on('pedido:retirado', ({ id }) => { /* quitar por id */ });
 | `pedido:nuevo` | `PedidoCocinaDto` | Un pedido llega a cocina |
 | `pedido:actualizado` | `PedidoCocinaDto` | Cambia un pedido que sigue en la cola (por ejemplo, un ítem pasa a `LISTO`) |
 | `pedido:retirado` | `{ id: number }` | El pedido ya no tiene ítems `PENDIENTE`, o se canceló |
+| `item:listo` | `PedidoCocinaDto` | Se marcó un platillo como listo (H07) |
+| `pedido:listo` | `PedidoCocinaDto` | Ese platillo era el último pendiente y el pedido pasó a `LISTO` (H07) |
 
 - La conexión se rechaza en el handshake (el cliente recibe `connect_error`) con las mismas reglas que el endpoint.
 - Cada socket se une a la room `sucursal:{sucursalId}` de su usuario y solo recibe los eventos de esa sucursal.
@@ -469,6 +478,73 @@ await this.cocinaEvents.pedidoActualizado(pedido.id);
 ```
 
 El servicio relee el pedido, decide qué evento corresponde (`nuevo`, `actualizado` o `retirado`) y lo publica en `EventEmitter2`. `CocinaGateway` lo escucha y lo reenvía a la room de la sucursal. Así quien cambia un pedido no depende de Socket.IO.
+
+### Marcar un platillo como listo (H07)
+
+```bash
+curl -X PATCH $BASE/cocina/items/301/listo -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+```jsonc
+// 200 OK
+{ "itemId": 301, "estado": "LISTO", "listoEn": "12:18", "pedidoEstado": "LISTO" }
+```
+
+- Marca el ítem como `LISTO` y guarda `listo_en`. Si ya no queda ningún ítem `PENDIENTE` en el pedido, el pedido pasa a `LISTO`. `pedidoEstado` es el estado del pedido después del cambio.
+- `listoEn` es la hora local de El Salvador en `HH:mm`. En `GET /cocina/pedidos` y en los eventos del socket, cada ítem trae `listoEn` en ISO 8601 (o `null` si sigue pendiente), igual que `creadoEn`.
+- Después del commit publica `item:listo` y, si el pedido se completó, `pedido:listo`. También publica `pedido:actualizado` o `pedido:retirado`, así el tablero de H06 se actualiza sin cambios.
+- La sucursal sale siempre del usuario autenticado.
+- Errores: `401` sin sesión; `403` si el rol no es `COCINA` ni `GERENTE`, si el usuario no tiene sucursal o si el platillo es de otra sucursal; `404` si el platillo no existe; `409` si el platillo ya está listo o el pedido no está en cocina (sin pagar, cancelado, entregado).
+- **Concurrencia:** la transacción bloquea la fila del ítem y la del pedido (`SELECT … FOR UPDATE`). Si dos cocineros marcan el mismo platillo a la vez, uno recibe `200` y el otro `409`. Si marcan a la vez los dos últimos platillos de un pedido, el pedido igual termina en `LISTO`.
+
+---
+
+## Dashboard de ventas (H28)
+
+Solo para `GERENTE_GENERAL`: el controlador usa `@Roles(Rol.GERENTE_GENERAL)` y el `RolesGuard` global responde `403` a cualquier otro rol.
+
+Las tres rutas reciben el mismo periodo: `desde` y `hasta` (`YYYY-MM-DD`, días completos en hora de El Salvador) y `sucursalId` opcional. Un rango con `hasta` anterior a `desde` responde `400` y una sucursal inexistente, `404`.
+
+**Qué cuenta como venta.** Las consultas parten de la vista `venta_confirmada`: subtotal − descuentos, sin IVA ni propina, solo pedidos con un pago `CONFIRMADO`. Además se excluye cualquier pedido con un pago `REEMBOLSADO`. El periodo y las franjas horarias usan la fecha de confirmación del pago.
+
+### `GET /dashboard/ventas`
+
+```bash
+curl "$BASE/dashboard/ventas?desde=2026-11-01&hasta=2026-11-30" -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+```jsonc
+{
+  "desde": "2026-11-01",
+  "hasta": "2026-11-30",
+  "sucursales": [
+    { "sucursalId": 1, "nombre": "Centro", "ventas": 8120, "pedidos": 640, "ticketPromedio": 12.69 }
+  ],
+  "totalGeneral": { "ventas": 8120, "pedidos": 640, "ticketPromedio": 12.69 },
+  "platillos": [{ "platilloId": 4, "nombre": "Hamburguesa", "cantidad": 120, "monto": 1078.8 }],
+  "horariosPico": [{ "sucursalId": 1, "nombre": "Centro", "franjas": [{ "hora": 12, "ventas": 1543.25 }] }]
+}
+```
+
+- `ticketPromedio` = ventas ÷ pedidos redondeado a dos decimales; `0` si no hubo pedidos. `totalGeneral.ticketPromedio` es ventas totales ÷ pedidos totales. Se calculan solo en el backend para que el dashboard (H28) y el comparativo (H29) usen el mismo valor.
+- `sucursales` incluye todas las sucursales de la selección, también las que no vendieron.
+- `platillos` viene de mayor a menor cantidad; en empate, primero el de mayor monto.
+- `diaSemana` opcional (`0` = domingo) filtra solo `horariosPico`.
+
+### `GET /dashboard/ventas/detalle`
+
+Una fila por pedido que cuenta como venta, de la más reciente a la más antigua. Acepta `pagina` (por defecto `1`) y `porPagina` (por defecto `20`, máximo `100`) y responde `{ items, total, pagina, porPagina }`.
+
+### `GET /dashboard/ventas/exportar`
+
+Descarga `ventas-por-sucursal_{desde}_{hasta}.csv` con la misma tabla que muestra el dashboard: una fila por sucursal (mayor venta primero) y al final `Total general`.
+
+```csv
+Sucursal,Ventas,Pedidos,Ticket promedio
+Centro,8120.00,640,12.69
+Escalón,4310.25,330,13.06
+Total general,12430.25,970,12.81
+```
 
 ---
 

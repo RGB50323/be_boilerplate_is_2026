@@ -76,6 +76,16 @@ export class CocinaGateway
     this.server.to(salaSucursal(sucursalId)).emit('pedido:retirado', { id: pedidoId });
   }
 
+  @OnEvent(CocinaEvento.ITEM_LISTO)
+  emitirItemListo({ sucursalId, pedido }: PedidoCocinaEvento): void {
+    this.server.to(salaSucursal(sucursalId)).emit('item:listo', pedido);
+  }
+
+  @OnEvent(CocinaEvento.PEDIDO_LISTO)
+  emitirPedidoListo({ sucursalId, pedido }: PedidoCocinaEvento): void {
+    this.server.to(salaSucursal(sucursalId)).emit('pedido:listo', pedido);
+  }
+
   private async autenticar(socket: CocinaSocket): Promise<void> {
     const token: unknown = socket.handshake.auth?.token;
     if (typeof token !== 'string' || token === '') {

@@ -119,6 +119,20 @@ describe('CocinaGateway', () => {
     expect(recibidosB).toEqual([]);
   });
 
+  it('reenvía item:listo y pedido:listo a la room de la sucursal', async () => {
+    const socket = conectar('token-cocina-a');
+    await resultadoConexion(socket);
+
+    const pedido = { id: 41 } as PedidoCocinaDto;
+    const itemListo = new Promise((resolve) => socket.once('item:listo', resolve));
+    const pedidoListo = new Promise((resolve) => socket.once('pedido:listo', resolve));
+    eventEmitter.emit(CocinaEvento.ITEM_LISTO, { sucursalId: 1, pedido });
+    eventEmitter.emit(CocinaEvento.PEDIDO_LISTO, { sucursalId: 1, pedido });
+
+    await expect(itemListo).resolves.toEqual(pedido);
+    await expect(pedidoListo).resolves.toEqual(pedido);
+  });
+
   it('reenvía pedido:retirado con solo el id', async () => {
     const socket = conectar('token-cocina-b');
     await resultadoConexion(socket);
