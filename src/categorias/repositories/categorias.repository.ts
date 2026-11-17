@@ -31,7 +31,10 @@ export class CategoriasRepository {
 
   contarPlatillosActivos(categoriaId: number) {
     return this.prisma.platillo.count({
-      where: { categoriaId, activo: true },
+      where: {
+        categoriaId,
+        sucursales: { some: { activo: true } },
+      },
     });
   }
 
@@ -70,7 +73,15 @@ export class CategoriasRepository {
           nombre: true,
           activa: true,
           deshabilitadaEn: true,
-          _count: { select: { platillos: { where: { activo: true } } } },
+          _count: {
+            select: {
+              platillos: {
+                where: {
+                  sucursales: { some: { activo: true } },
+                },
+              },
+            },
+          },
         },
       }),
     ]);
@@ -87,7 +98,10 @@ export class CategoriasRepository {
 
   listarPlatillosActivos(categoriaId: number) {
     return this.prisma.platillo.findMany({
-      where: { categoriaId, activo: true },
+      where: {
+        categoriaId,
+        sucursales: { some: { activo: true } },
+      },
       orderBy: { nombre: 'asc' },
       select: { id: true, nombre: true },
     });

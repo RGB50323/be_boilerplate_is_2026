@@ -107,7 +107,7 @@ async function recalcular(
 
 @Injectable()
 export class PedidosRepository {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   buscarMesa(id: number) {
     return this.prisma.mesa.findUnique({
@@ -116,22 +116,30 @@ export class PedidosRepository {
     });
   }
 
-  buscarPlatillos(ids: number[], sucursalId: number) {
-    return this.prisma.platillo.findMany({
+  async buscarPlatillos(ids: number[], sucursalId: number) {
+    const platillos = await this.prisma.platillo.findMany({
       where: { id: { in: ids } },
       select: {
         id: true,
         nombre: true,
-        activo: true,
         categoria: { select: { activa: true } },
         sucursales: {
           where: { sucursalId },
-          select: { precio: true, disponibilidad: true },
+          select: {
+            precio: true,
+            disponibilidad: true,
+            activo: true,
+          },
         },
       },
     });
-  }
 
+    return platillos.map((platillo) => ({
+      ...platillo,
+      activo: platillo.sucursales[0]?.activo ?? false,
+    }));
+  }
+  
   buscarPedidoAbierto(mesaId: number) {
     return this.prisma.pedido.findFirst({
       where: { mesaId, estado: { notIn: ESTADOS_CERRADOS } },
@@ -152,7 +160,7 @@ export class PedidosRepository {
       select: { id: true, platilloId: true, cantidad: true, estado: true },
     });
   }
-  
+
   listarMesas(sucursalId: number) {
     return this.prisma.mesa.findMany({
       where: { sucursalId },

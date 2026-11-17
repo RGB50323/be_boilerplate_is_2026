@@ -267,6 +267,7 @@ model PlatilloSucursal {
   sucursalId     Int     @map("sucursal_id")
   precio         Decimal @db.Decimal(10, 2)
   disponibilidad Int     @default(0)
+  activo Boolean @default(true)
 
   platillo Platillo @relation(fields: [platilloId], references: [id], onDelete: Cascade)
   sucursal Sucursal @relation(fields: [sucursalId], references: [id])

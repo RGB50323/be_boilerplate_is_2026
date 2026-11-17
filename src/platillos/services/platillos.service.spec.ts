@@ -35,11 +35,16 @@ function registro(extra: Record<string, unknown> = {}) {
     nombre: 'Pupusa revuelta',
     descripcion: null,
     imagenUrl: null,
-    activo: true,
     categoriaId: 2,
     categoria: { nombre: 'Platos típicos' },
-    sucursales: [{ precio: { toNumber: () => 1.25 }, disponibilidad: 40 }],
     ...extra,
+    sucursales: [
+      {
+        precio: { toNumber: () => 1.25 },
+        disponibilidad: 40,
+        activo: extra.activo ?? true,
+      },
+    ],
   };
 }
 
@@ -308,7 +313,7 @@ describe('PlatillosService', () => {
       const resultado = await service.deshabilitar(10, 1);
 
       expect(resultado).toEqual({ id: 10, activo: false });
-      expect(repository.deshabilitar).toHaveBeenCalledWith(10);
+      expect(repository.deshabilitar).toHaveBeenCalledWith(10, 1);
     });
 
     it('responde 409 si ya estaba deshabilitado', async () => {
@@ -350,7 +355,7 @@ describe('PlatillosService', () => {
       const resultado = await service.habilitar(10, 1);
 
       expect(resultado).toEqual({ id: 10, activo: true });
-      expect(repository.habilitar).toHaveBeenCalledWith(10);
+      expect(repository.habilitar).toHaveBeenCalledWith(10, 1);
     });
 
     it('responde 409 si ya estaba habilitado', async () => {
