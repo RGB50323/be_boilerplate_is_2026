@@ -54,6 +54,31 @@ describe('CocinaEventsService', () => {
     expect(emit).toHaveBeenCalledWith(CocinaEvento.PEDIDO_RETIRADO, { sucursalId: 2, pedidoId: 9 });
   });
 
+  it('platilloListo publica item:listo y pedido:actualizado si el pedido sigue en la cola', async () => {
+    esVisibleEnCocina.mockReturnValue(true);
+
+    await service.platilloListo(9, false);
+
+    expect(emit.mock.calls.map(([evento]) => evento)).toEqual([
+      CocinaEvento.ITEM_LISTO,
+      CocinaEvento.PEDIDO_ACTUALIZADO,
+    ]);
+    expect(emit).toHaveBeenCalledWith(CocinaEvento.ITEM_LISTO, { sucursalId: 2, pedido: dto });
+  });
+
+  it('platilloListo publica también pedido:listo y retira el pedido cuando se completó', async () => {
+    esVisibleEnCocina.mockReturnValue(false);
+
+    await service.platilloListo(9, true);
+
+    expect(emit.mock.calls.map(([evento]) => evento)).toEqual([
+      CocinaEvento.ITEM_LISTO,
+      CocinaEvento.PEDIDO_LISTO,
+      CocinaEvento.PEDIDO_RETIRADO,
+    ]);
+    expect(emit).toHaveBeenCalledWith(CocinaEvento.PEDIDO_LISTO, { sucursalId: 2, pedido: dto });
+  });
+
   it('ignora un pedido inexistente', async () => {
     findById.mockResolvedValue(null);
 
