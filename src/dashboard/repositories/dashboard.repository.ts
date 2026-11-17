@@ -116,13 +116,10 @@ export class DashboardRepository {
       ORDER BY 1, 2`;
   }
 
-  /**
-   * Cada venta confirmada del periodo, de la más reciente a la más antigua.
-   * Sin `pagina` devuelve todas (para exportar a CSV).
-   */
+  /** Una página de ventas confirmadas, de la más reciente a la más antigua. */
   ventasConfirmadasDetalle(
     filtro: FiltroVentas,
-    pagina?: { limite: number; desplazamiento: number },
+    pagina: { limite: number; desplazamiento: number },
   ): Promise<FilaVentaConfirmada[]> {
     return this.prisma.$queryRaw<FilaVentaConfirmada[]>`
       WITH ventas AS (${this.ventasConfirmadas(filtro)})
@@ -146,7 +143,7 @@ export class DashboardRepository {
         WHERE dp.pedido_id = ventas.pedido_id
       ) d ON TRUE
       ORDER BY ventas.fecha_pago DESC, ventas.pedido_id DESC
-      ${pagina ? Prisma.sql`LIMIT ${pagina.limite} OFFSET ${pagina.desplazamiento}` : Prisma.empty}`;
+      LIMIT ${pagina.limite} OFFSET ${pagina.desplazamiento}`;
   }
 
   async contarVentasConfirmadas(filtro: FiltroVentas): Promise<number> {

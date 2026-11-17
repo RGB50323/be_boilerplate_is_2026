@@ -77,9 +77,9 @@ export class DashboardController {
   @Get('ventas/exportar')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
-    summary: 'Exportar ventas confirmadas a CSV (H28, criterio 14)',
+    summary: 'Exportar ventas por sucursal a CSV (H28, criterio 14)',
     description:
-      'Todas las ventas confirmadas del periodo. Columnas: Fecha, Hora, Pedido, Sucursal, Tipo, Artículos, Subtotal, Descuentos, Venta (hora de El Salvador).',
+      'Una fila por sucursal con Ventas, Pedidos y Ticket promedio, y la fila "Total general". Mismos filtros y cálculos que GET /dashboard/ventas.',
   })
   @ApiProduces('text/csv')
   @ApiOkResponse({ description: 'Archivo CSV.', schema: { type: 'string' } })
@@ -92,11 +92,11 @@ export class DashboardController {
     @Query() query: DashboardRangoQueryDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<string> {
-    const csv = await this.dashboardService.exportarVentasCsv(query);
+    const csv = await this.dashboardService.exportarVentasPorSucursalCsv(query);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="ventas-confirmadas_${query.desde}_${query.hasta}.csv"`,
+      `attachment; filename="ventas-por-sucursal_${query.desde}_${query.hasta}.csv"`,
     );
     return csv;
   }

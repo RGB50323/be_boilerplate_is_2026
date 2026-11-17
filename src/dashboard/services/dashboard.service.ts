@@ -5,8 +5,8 @@ import {
 } from '@nestjs/common';
 import {
   DashboardRepository,
-  type FilaVentaConfirmada,
   type FilaVentasHora,
+  type FilaVentasSucursal,
   type FiltroVentas,
 } from '@Dashboard/repositories';
 import type {
@@ -15,13 +15,14 @@ import type {
   DashboardVentasQueryDto,
   DashboardVentasResponseDto,
   FranjaHorariaDto,
+  TotalGeneralDto,
   VentasDetalleResponseDto,
+  VentasSucursalDto,
 } from '@Dashboard/dto';
 
 // America/El_Salvador usa UTC-06:00.
 const DESFASE_EL_SALVADOR = '-06:00';
 const UN_DIA_MS = 24 * 60 * 60 * 1000;
-const DESFASE_MS = 6 * 60 * 60 * 1000;
 
 type Horario = { sucursalId: number; apertura: Date; cierre: Date };
 
@@ -36,17 +37,20 @@ export class DashboardService {
     const filtro = await this.prepararFiltro(rango);
     const { desde, hasta, sucursalId } = rango;
 
-    const [sucursales, platillos, ventasHora, horarios] = await Promise.all([
+    const [filas, platillos, ventasHora, horarios] = await Promise.all([
       this.dashboardRepository.ventasPorSucursal(filtro),
       this.dashboardRepository.platillosVendidos(filtro),
       this.dashboardRepository.ventasPorHora(filtro, diaSemana),
       this.dashboardRepository.horarios(sucursalId, diaSemana),
     ]);
 
+    const sucursales = conTicket(filas);
+
     return {
       desde,
       hasta,
       sucursales,
+      totalGeneral: calcularTotalGeneral(filas),
       platillos,
       horariosPico: sucursales.map(({ sucursalId: id, nombre }) => ({
         sucursalId: id,
@@ -76,11 +80,19 @@ export class DashboardService {
     return { items, total, pagina, porPagina };
   }
 
-  /** CSV con cada venta confirmada del periodo (botón "Exportar CSV"). */
-  async exportarVentasCsv(rango: DashboardRangoQueryDto): Promise<string> {
+  /**
+   * CSV de ventas por sucursal (criterio 14): una fila por sucursal con
+   * ventas, pedidos y ticket promedio, y el total general. Coincide con la
+   * tabla "Ventas por sucursal" del dashboard y usa los mismos filtros.
+   */
+  async exportarVentasPorSucursalCsv(
+    rango: DashboardRangoQueryDto,
+  ): Promise<string> {
     const filtro = await this.prepararFiltro(rango);
-    return generarCsvVentas(
-      await this.dashboardRepository.ventasConfirmadasDetalle(filtro),
+    const filas = await this.dashboardRepository.ventasPorSucursal(filtro);
+    return generarCsvVentasPorSucursal(
+      conTicket(filas),
+      calcularTotalGeneral(filas),
     );
   }
 
@@ -125,53 +137,7 @@ export class DashboardService {
   }
 }
 
-const TIPOS_PEDIDO: Record<string, string> = {
-  MESA: 'Mesa',
-  LLEVAR: 'Para llevar',
-};
 
-const ENCABEZADO_CSV = [
-  'Fecha',
-  'Hora',
-  'Pedido',
-  'Sucursal',
-  'Tipo',
-  'Artículos',
-  'Subtotal',
-  'Descuentos',
-  'Venta',
-];
-
-const dos = (n: number) => String(n).padStart(2, '0');
-
-function celdaCsv(valor: string | number): string {
-  const texto = String(valor);
-  return /[",\n\r]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
-}
-
-/**
- * Mismo formato que genera el frontend: fecha dd/mm/aaaa y hora HH:mm en hora
- * de El Salvador, montos con dos decimales y punto, filas separadas por CRLF.
- */
-export function generarCsvVentas(ventas: FilaVentaConfirmada[]): string {
-  const filas = ventas.map((v) => {
-    const local = new Date(new Date(v.fecha).getTime() - DESFASE_MS);
-    return [
-      `${dos(local.getUTCDate())}/${dos(local.getUTCMonth() + 1)}/${local.getUTCFullYear()}`,
-      `${dos(local.getUTCHours())}:${dos(local.getUTCMinutes())}`,
-      v.numero ?? `#${v.pedidoId}`,
-      v.sucursal,
-      TIPOS_PEDIDO[v.tipo] ?? v.tipo,
-      v.articulos,
-      v.subtotal.toFixed(2),
-      v.descuentos.toFixed(2),
-      v.venta.toFixed(2),
-    ];
-  });
-  return [ENCABEZADO_CSV, ...filas]
-    .map((fila) => fila.map(celdaCsv).join(','))
-    .join('\r\n');
-}
 
 /**
  * Una franja por hora desde la primera apertura hasta el último cierre de la
@@ -200,4 +166,68 @@ export function armarFranjas(
     franjas.push({ hora, ventas: ventasPorHora.get(hora) ?? 0 });
   }
   return franjas;
+}
+
+const enCentavos = (n: number) => Math.round(n * 100);
+
+/**
+ * Criterios 3 y 4: ventas ÷ pedidos redondeado a dos decimales; 0 sin pedidos.
+ * Se divide en centavos enteros para que el redondeo no dependa de los
+ * decimales del float (8,120.00 ÷ 640 = 12.69).
+ */
+export function ticketPromedio(ventas: number, pedidos: number): number {
+  if (pedidos <= 0) return 0;
+  return Math.round(enCentavos(ventas) / pedidos) / 100;
+}
+
+function conTicket(filas: FilaVentasSucursal[]): VentasSucursalDto[] {
+  return filas.map((f) => ({
+    ...f,
+    ticketPromedio: ticketPromedio(f.ventas, f.pedidos),
+  }));
+}
+
+/** Totales de las sucursales incluidas; el ticket es el total ÷ pedidos totales. */
+export function calcularTotalGeneral(
+  filas: Pick<FilaVentasSucursal, 'ventas' | 'pedidos'>[],
+): TotalGeneralDto {
+  const centavos = filas.reduce((t, f) => t + enCentavos(f.ventas), 0);
+  const pedidos = filas.reduce((t, f) => t + f.pedidos, 0);
+  return {
+    ventas: centavos / 100,
+    pedidos,
+    ticketPromedio: pedidos ? Math.round(centavos / pedidos) / 100 : 0,
+  };
+}
+
+function celdaCsv(valor: string | number): string {
+  const texto = String(valor);
+  return /[",\n\r]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+}
+
+/**
+ * Mismo orden que la tabla del dashboard (mayor venta primero; en empate, por
+ * nombre) y al final la fila "Total general". Montos con dos decimales y
+ * punto; filas separadas por CRLF.
+ */
+export function generarCsvVentasPorSucursal(
+  sucursales: VentasSucursalDto[],
+  total: TotalGeneralDto,
+): string {
+  const fila = (nombre: string, t: TotalGeneralDto) => [
+    nombre,
+    t.ventas.toFixed(2),
+    t.pedidos,
+    t.ticketPromedio.toFixed(2),
+  ];
+  const ordenadas = [...sucursales].sort(
+    (a, b) => b.ventas - a.ventas || a.nombre.localeCompare(b.nombre, 'es'),
+  );
+  return [
+    ['Sucursal', 'Ventas', 'Pedidos', 'Ticket promedio'],
+    ...ordenadas.map((s) => fila(s.nombre, s)),
+    fila('Total general', total),
+  ]
+    .map((f) => f.map(celdaCsv).join(','))
+    .join('\r\n');
 }

@@ -3,7 +3,9 @@ import { DashboardRepository } from '@Dashboard/repositories';
 import {
   armarFranjas,
   DashboardService,
-  generarCsvVentas,
+  calcularTotalGeneral,
+  generarCsvVentasPorSucursal,
+  ticketPromedio,
 } from './dashboard.service.js';
 
 const hora = (valor: string) => new Date(`1970-01-01T${valor}:00Z`);
@@ -93,7 +95,11 @@ describe('DashboardService', () => {
 
     const r = await service.ventas({ desde: '2026-11-01', hasta: '2026-11-08' });
 
-    expect(r.sucursales).toHaveLength(2);
+    expect(r.sucursales).toEqual([
+      { sucursalId: 1, nombre: 'Centro', ventas: 8120, pedidos: 640, ticketPromedio: 12.69 },
+      { sucursalId: 2, nombre: 'Escalón', ventas: 0, pedidos: 0, ticketPromedio: 0 },
+    ]);
+    expect(r.totalGeneral).toEqual({ ventas: 8120, pedidos: 640, ticketPromedio: 12.69 });
     expect(r.horariosPico).toEqual([
       {
         sucursalId: 1,
@@ -109,11 +115,12 @@ describe('DashboardService', () => {
   });
 });
 
-describe('DashboardService.ventasDetalle y exportarVentasCsv', () => {
+describe('DashboardService.ventasDetalle y exportarVentasPorSucursalCsv', () => {
   const repo = {
     sucursalExiste: vi.fn().mockResolvedValue(true),
     ventasConfirmadasDetalle: vi.fn(),
     contarVentasConfirmadas: vi.fn(),
+    ventasPorSucursal: vi.fn(),
   };
   const service = new DashboardService(repo as unknown as DashboardRepository);
   const filtro = {
@@ -153,13 +160,29 @@ describe('DashboardService.ventasDetalle y exportarVentasCsv', () => {
     expect(repo.ventasConfirmadasDetalle).not.toHaveBeenCalled();
   });
 
-  it('exporta todas las ventas del periodo, sin paginar', async () => {
-    const csv = await service.exportarVentasCsv({
+  it('exporta una fila por sucursal y el total, con los mismos filtros', async () => {
+    repo.ventasPorSucursal.mockResolvedValue([
+      { sucursalId: 1, nombre: 'Centro', ventas: 8120, pedidos: 640 },
+      { sucursalId: 2, nombre: 'Escalón', ventas: 4310.25, pedidos: 330 },
+    ]);
+    const csv = await service.exportarVentasPorSucursalCsv({
       desde: '2026-11-01',
       hasta: '2026-11-08',
     });
-    expect(repo.ventasConfirmadasDetalle).toHaveBeenCalledWith(filtro);
-    expect(csv.split('\r\n')).toHaveLength(2);
+    expect(repo.ventasPorSucursal).toHaveBeenCalledWith(filtro);
+    expect(repo.ventasConfirmadasDetalle).not.toHaveBeenCalled();
+    expect(csv.split('\r\n')).toEqual([
+      'Sucursal,Ventas,Pedidos,Ticket promedio',
+      'Centro,8120.00,640,12.69',
+      'Escalón,4310.25,330,13.06',
+      'Total general,12430.25,970,12.81',
+    ]);
+  });
+
+  it('rechaza exportar un rango invertido', async () => {
+    await expect(
+      service.exportarVentasPorSucursalCsv({ desde: '2026-11-08', hasta: '2026-11-01' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
@@ -176,34 +199,65 @@ const venta = {
   venta: 22.5,
 };
 
-describe('generarCsvVentas', () => {
-  it('una fila por venta, con fecha y hora de El Salvador', () => {
-    const csv = generarCsvVentas([
-      venta,
-      {
-        ...venta,
-        pedidoId: 16,
-        numero: null,
-        sucursal: 'Plaza "Norte", local 3',
-        fecha: '2026-11-09T02:35:00.000Z',
-        tipo: 'LLEVAR',
-        articulos: 1,
-        subtotal: 8.99,
-        descuentos: 0,
-        venta: 8.99,
-      },
-    ]);
-    expect(csv.split('\r\n')).toEqual([
-      'Fecha,Hora,Pedido,Sucursal,Tipo,Artículos,Subtotal,Descuentos,Venta',
-      '08/11/2026,12:05,CEN-0015,Centro,Mesa,3,25.00,2.50,22.50',
-      '08/11/2026,20:35,#16,"Plaza ""Norte"", local 3",Para llevar,1,8.99,0.00,8.99',
-    ]);
+describe('ticketPromedio y calcularTotalGeneral', () => {
+  it('divide ventas entre pedidos y redondea a dos decimales', () => {
+    expect(ticketPromedio(8120, 640)).toBe(12.69);
+    expect(ticketPromedio(2849.59, 84)).toBe(33.92);
   });
 
-  it('sin ventas solo tiene el encabezado', () => {
-    expect(generarCsvVentas([])).toBe(
-      'Fecha,Hora,Pedido,Sucursal,Tipo,Artículos,Subtotal,Descuentos,Venta',
+  it('es 0 sin pedidos', () => {
+    expect(ticketPromedio(0, 0)).toBe(0);
+  });
+
+  it('el total usa ventas totales entre pedidos totales', () => {
+    expect(
+      calcularTotalGeneral([
+        { ventas: 8120, pedidos: 640 },
+        { ventas: 0, pedidos: 0 },
+        { ventas: 1880, pedidos: 160 },
+      ]),
+    ).toEqual({ ventas: 10000, pedidos: 800, ticketPromedio: 12.5 });
+  });
+
+  it('suma en centavos para evitar errores de punto flotante', () => {
+    expect(
+      calcularTotalGeneral([
+        { ventas: 0.1, pedidos: 1 },
+        { ventas: 0.2, pedidos: 1 },
+      ]).ventas,
+    ).toBe(0.3);
+  });
+
+  it('sin pedidos el total y el ticket son 0', () => {
+    expect(calcularTotalGeneral([])).toEqual({ ventas: 0, pedidos: 0, ticketPromedio: 0 });
+  });
+});
+
+describe('generarCsvVentasPorSucursal', () => {
+  it('ordena por ventas, luego por nombre, y termina con el total general', () => {
+    const csv = generarCsvVentasPorSucursal(
+      [
+        { sucursalId: 3, nombre: 'Santa Tecla', ventas: 0, pedidos: 0, ticketPromedio: 0 },
+        { sucursalId: 2, nombre: 'Escalón', ventas: 500, pedidos: 40, ticketPromedio: 12.5 },
+        { sucursalId: 1, nombre: 'Centro', ventas: 500, pedidos: 50, ticketPromedio: 10 },
+        {
+          sucursalId: 4,
+          nombre: 'Plaza "Norte", local 3',
+          ventas: 800,
+          pedidos: 40,
+          ticketPromedio: 20,
+        },
+      ],
+      { ventas: 1800, pedidos: 130, ticketPromedio: 13.85 },
     );
+    expect(csv.split('\r\n')).toEqual([
+      'Sucursal,Ventas,Pedidos,Ticket promedio',
+      '"Plaza ""Norte"", local 3",800.00,40,20.00',
+      'Centro,500.00,50,10.00',
+      'Escalón,500.00,40,12.50',
+      'Santa Tecla,0.00,0,0.00',
+      'Total general,1800.00,130,13.85',
+    ]);
   });
 });
 

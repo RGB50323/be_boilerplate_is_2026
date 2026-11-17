@@ -16,6 +16,30 @@ export class VentasSucursalDto {
 
   @ApiProperty({ example: 640 })
   pedidos!: number;
+
+  @ApiProperty({
+    description:
+      'Ventas ÷ pedidos, redondeado a dos decimales; 0 si la sucursal no tuvo pedidos.',
+    example: 12.69,
+  })
+  ticketPromedio!: number;
+}
+
+export class TotalGeneralDto {
+  @ApiProperty({
+    description: 'Suma de las ventas de las sucursales de la respuesta.',
+    example: 15230.5,
+  })
+  ventas!: number;
+
+  @ApiProperty({ example: 1180 })
+  pedidos!: number;
+
+  @ApiProperty({
+    description: 'Ventas totales ÷ pedidos totales, a dos decimales; 0 sin pedidos.',
+    example: 12.91,
+  })
+  ticketPromedio!: number;
 }
 
 export class PlatilloVendidoDto {
@@ -78,6 +102,12 @@ export class DashboardVentasResponseDto {
     description: 'Todas las sucursales de la selección, incluso sin ventas.',
   })
   sucursales!: VentasSucursalDto[];
+
+  @ApiProperty({
+    type: TotalGeneralDto,
+    description: 'Totales de las sucursales incluidas (todas o la filtrada).',
+  })
+  totalGeneral!: TotalGeneralDto;
 
   @ApiProperty({
     type: PlatilloVendidoDto,

@@ -101,7 +101,10 @@ it('el gerente general recibe ventas, platillos y horarios pico', async () => {
   expect(r.body).toEqual({
     desde: '2026-11-01',
     hasta: '2026-11-08',
-    sucursales: [{ sucursalId: 1, nombre: 'Centro', ventas: 8120, pedidos: 640 }],
+    sucursales: [
+      { sucursalId: 1, nombre: 'Centro', ventas: 8120, pedidos: 640, ticketPromedio: 12.69 },
+    ],
+    totalGeneral: { ventas: 8120, pedidos: 640, ticketPromedio: 12.69 },
     platillos: [{ platilloId: 4, nombre: 'Hamburguesa', cantidad: 10, monto: 89.9 }],
     horariosPico: [
       {
@@ -219,18 +222,24 @@ describe('GET /dashboard/ventas/exportar', () => {
       .query({ desde: '2026-11-01', hasta: '2026-11-08', ...query })
       .set('Authorization', 'Bearer token');
 
-  it('descarga un CSV con cada venta confirmada', async () => {
+  it('descarga un CSV con una fila por sucursal y el total general', async () => {
     const r = await exportar().expect(200);
     expect(r.headers['content-type']).toBe('text/csv; charset=utf-8');
     expect(r.headers['content-disposition']).toBe(
-      'attachment; filename="ventas-confirmadas_2026-11-01_2026-11-08.csv"',
+      'attachment; filename="ventas-por-sucursal_2026-11-01_2026-11-08.csv"',
     );
     expect(r.text.split('\r\n')).toEqual([
-      'Fecha,Hora,Pedido,Sucursal,Tipo,Artículos,Subtotal,Descuentos,Venta',
-      '08/11/2026,12:05,CEN-0015,Centro,Mesa,3,25.00,2.50,22.50',
+      'Sucursal,Ventas,Pedidos,Ticket promedio',
+      'Centro,8120.00,640,12.69',
+      'Total general,8120.00,640,12.69',
     ]);
-    expect(repo.ventasConfirmadasDetalle).toHaveBeenCalledWith(
-      expect.objectContaining({ sucursalId: undefined }),
+    expect(repo.ventasConfirmadasDetalle).not.toHaveBeenCalled();
+  });
+
+  it('respeta la sucursal elegida', async () => {
+    await exportar({ sucursalId: '1' }).expect(200);
+    expect(repo.ventasPorSucursal).toHaveBeenCalledWith(
+      expect.objectContaining({ sucursalId: 1 }),
     );
   });
 
