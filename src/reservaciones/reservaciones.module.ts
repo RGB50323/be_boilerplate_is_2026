@@ -2,12 +2,30 @@ import { Module } from '@nestjs/common';
 import {
   ReservacionesController,
   ReservasClienteController,
+  EdicionReservacionController,
 } from '@Reservaciones/controllers';
-import { ReservacionesService } from '@Reservaciones/services';
-import { ReservacionRepository } from '@Reservaciones/repositories';
+import {
+  ReservacionesService,
+  EdicionReservacionService,
+} from '@Reservaciones/services';
+import {
+  ReservacionRepository,
+  EdicionReservacionRepository,
+} from '@Reservaciones/repositories';
+import { NotificacionesModule } from '@Notificaciones';
 
 @Module({
-  controllers: [ReservacionesController, ReservasClienteController],
-  providers: [ReservacionesService, ReservacionRepository],
+  imports: [NotificacionesModule],
+  controllers: [
+    ReservacionesController,
+    ReservasClienteController,
+    EdicionReservacionController,
+  ],
+  providers: [
+    ReservacionesService,
+    ReservacionRepository,
+    EdicionReservacionService,
+    EdicionReservacionRepository,
+  ],
 })
 export class ReservacionesModule {}

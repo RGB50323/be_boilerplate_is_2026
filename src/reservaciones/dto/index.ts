@@ -5,3 +5,4 @@ export * from './sucursal-response.dto.js';
 export * from './error-disponibilidad-response.dto.js';
 export * from './crear-reservacion.dto.js';
 export * from './reservacion-response.dto.js';
+export * from './modificar-reservacion.dto.js';
