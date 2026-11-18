@@ -72,6 +72,17 @@ export class AvisosReservacionService {
     return correosPendientes ?? [];
   }
 
+  async registrarCancelada(
+    reservacion: DatosAviso,
+    tx: Prisma.TransactionClient,
+  ): Promise<string[]> {
+    const { correosPendientes } = await this.notificaciones.notificar(
+      this.armarAviso(reservacion, 'cancelada'),
+      tx,
+    );
+    return correosPendientes ?? [];
+  }
+
   enviarCorreos(ids: string[]): void {
     this.notificaciones.enviarCorreosPendientes(ids);
   }

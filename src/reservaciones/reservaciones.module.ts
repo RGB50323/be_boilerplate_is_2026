@@ -1,3 +1,5 @@
+import { CancelacionReservacionController } from './controllers/cancelacion-reservacion.controller.js';
+import { CancelacionReservacionService } from './services/cancelacion-reservacion.service.js';
 import { Module } from '@nestjs/common';
 import { NotificacionesModule } from '@Notificaciones';
 import {
@@ -19,11 +21,13 @@ import {
 @Module({
   imports: [NotificacionesModule],
   controllers: [
+    CancelacionReservacionController,
     ReservacionesController,
     ReservasClienteController,
     EdicionReservacionController,
   ],
   providers: [
+    CancelacionReservacionService,
     ReservacionesService,
     ReservacionRepository,
     EdicionReservacionService,
