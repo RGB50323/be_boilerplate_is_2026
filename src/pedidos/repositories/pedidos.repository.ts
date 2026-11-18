@@ -139,7 +139,7 @@ export class PedidosRepository {
       activo: platillo.sucursales[0]?.activo ?? false,
     }));
   }
-  
+
   buscarPedidoAbierto(mesaId: number) {
     return this.prisma.pedido.findFirst({
       where: { mesaId, estado: { notIn: ESTADOS_CERRADOS } },
@@ -284,22 +284,47 @@ export class PedidosRepository {
     cambios: CambiosItem,
   ) {
     return this.prisma.$transaction(async (tx) => {
+      const [actual] = await tx.$queryRaw<ItemExistente[]>`
+      SELECT
+        "id",
+        "platillo_id" AS "platilloId",
+        "cantidad",
+        "estado"
+      FROM "detalle_pedido"
+      WHERE "id" = ${item.id}
+        AND "pedido_id" = ${pedidoId}
+      FOR UPDATE
+    `;
+
+      if (!actual || actual.estado !== EstadoItem.PENDIENTE) {
+        throw new ItemNoModificableError();
+      }
+
       const { count } = await tx.detallePedido.updateMany({
-        where: { id: item.id, pedidoId, estado: EstadoItem.PENDIENTE },
-        data: { cantidad: cambios.cantidad, nota: cambios.nota },
+        where: {
+          id: actual.id,
+          pedidoId,
+          estado: EstadoItem.PENDIENTE,
+        },
+        data: {
+          cantidad: cambios.cantidad,
+          nota: cambios.nota,
+        },
       });
+
       if (count === 0) throw new ItemNoModificableError();
 
       if (cambios.cantidad !== undefined) {
-        const diferencia = cambios.cantidad - item.cantidad;
+        const diferencia = cambios.cantidad - actual.cantidad;
+
         if (diferencia > 0) {
           await descontar(
             tx,
             sucursalId,
-            new Map([[item.platilloId, diferencia]]),
+            new Map([[actual.platilloId, diferencia]]),
           );
         } else if (diferencia < 0) {
-          await devolver(tx, sucursalId, item.platilloId, -diferencia);
+          await devolver(tx, sucursalId, actual.platilloId, -diferencia);
         }
       }
 
