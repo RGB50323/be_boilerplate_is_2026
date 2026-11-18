@@ -40,15 +40,9 @@ export class RecordatoriosReservacionService {
       ) {
         continue;
       }
-      if (
-        !(await this.repository.marcarRecordatorioEnviado(
-          reservacion.id,
-          ahora,
-        ))
-      ) {
-        continue;
-      }
-      await this.avisos.recordatorio(reservacion.id);
+      // Aviso antes que la marca: si falla se reintenta, la clave única evita duplicados
+      if (!(await this.avisos.recordatorio(reservacion.id))) continue;
+      await this.repository.marcarRecordatorioEnviado(reservacion.id, ahora);
       enviados += 1;
     }
     return enviados;

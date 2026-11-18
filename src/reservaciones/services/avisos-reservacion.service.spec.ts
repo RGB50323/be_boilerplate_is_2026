@@ -102,10 +102,17 @@ describe('AvisosReservacionService', () => {
     expect(notificaciones.notificar).not.toHaveBeenCalled();
   });
 
-  it('un fallo del aviso no se propaga', async () => {
+  it('devuelve true cuando el aviso queda registrado', async () => {
+    const { service } = crearContexto();
+
+    await expect(service.recordatorio(12)).resolves.toBe(true);
+  });
+
+  it('un fallo del aviso no se propaga y devuelve false', async () => {
     const { service, notificaciones } = crearContexto();
     notificaciones.notificar.mockRejectedValue(new Error('caído'));
 
-    await expect(service.creada(12)).resolves.toBeUndefined();
+    await expect(service.creada(12)).resolves.toBe(false);
+    await expect(service.recordatorio(12)).resolves.toBe(false);
   });
 });

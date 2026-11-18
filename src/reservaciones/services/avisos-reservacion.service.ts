@@ -33,27 +33,30 @@ export class AvisosReservacionService {
     private readonly notificaciones: NotificacionesService,
   ) {}
 
-  creada(reservacionId: number): Promise<void> {
+  creada(reservacionId: number): Promise<boolean> {
     return this.avisar(reservacionId, 'confirmada');
   }
 
-  modificada(reservacionId: number): Promise<void> {
+  modificada(reservacionId: number): Promise<boolean> {
     return this.avisar(reservacionId, 'modificada');
   }
 
-  cancelada(reservacionId: number): Promise<void> {
+  cancelada(reservacionId: number): Promise<boolean> {
     return this.avisar(reservacionId, 'cancelada');
   }
 
-  recordatorio(reservacionId: number): Promise<void> {
+  recordatorio(reservacionId: number): Promise<boolean> {
     return this.avisar(reservacionId, 'recordatorio');
   }
 
-  // Un fallo del aviso no debe deshacer la acción sobre la reservación
-  private async avisar(reservacionId: number, tipo: TipoAviso): Promise<void> {
+  // No lanza; devuelve false si el aviso no quedó registrado
+  private async avisar(
+    reservacionId: number,
+    tipo: TipoAviso,
+  ): Promise<boolean> {
     try {
       const reservacion = await this.repository.buscarParaAviso(reservacionId);
-      if (reservacion === null) return;
+      if (reservacion === null) return true;
 
       const codigo = codigoReservacion(reservacion.id);
       const { fecha, hora } = fechaHoraLocal(reservacion.inicio);
@@ -80,11 +83,13 @@ export class AvisosReservacionService {
         referencia: { tipo: REFERENCIAS[tipo], id: referenciaId },
         enviarCorreo: true,
       });
+      return true;
     } catch (error) {
       this.logger.error(
         `No se pudo avisar (${tipo}) la reservación ${reservacionId}`,
         error,
       );
+      return false;
     }
   }
 }
