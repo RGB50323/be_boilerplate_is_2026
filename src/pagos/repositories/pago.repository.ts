@@ -1,7 +1,9 @@
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException} from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
 import { EstadoPago } from '@PrismaClient';
+import { ComprobantesService } from '../../comprobantes/services/comprobantes.service.js';
+import type { TicketSnapshot } from '../types/ticket-snapshot.js';
 
 //----------------------------------------------------------------------------
 
@@ -11,13 +13,17 @@ interface CrearPagoData {
   transaccionId: string;
   monto: number;
   estado: EstadoPago;
+  ticketSnapshot: TicketSnapshot;
 }
 
 //----------------------------------------------------------------------------
 
 @Injectable()
 export class PagoRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly comprobantesService: ComprobantesService,
+  ) {}
 
   // Buscar una operación previamente registrada
   buscarPorSolicitud(idempotencyKey: string) {
@@ -67,6 +73,7 @@ export class PagoRepository {
         transaccionId: data.transaccionId,
         monto: data.monto,
         estado: data.estado,
+        ticketSnapshot: data.ticketSnapshot,
       },
     });
   }
@@ -87,10 +94,43 @@ export class PagoRepository {
 
   // Actualizar el estado solamente si conserva
   // el estado que se verificó anteriormente
+  // Una sola transacción PostgreSQL vincula la confirmación con la emisión.
+  // Si falta el ticket validado o H17 falla, se revierte el cambio de estado.
+  confirmarYEmitirComprobante(transaccionId: string, estadoActual: EstadoPago) {
+    return this.prisma.$transaction(async (tx) => {
+      const resultado = await tx.pago.updateMany({
+        where: { transaccionId, estado: estadoActual },
+        data: { estado: EstadoPago.CONFIRMADO, confirmadoEn: new Date() },
+      });
+
+      if (resultado.count === 0) return resultado;
+
+      const { id, pedidoId, ticketSnapshot } = await tx.pago.findUniqueOrThrow({
+        where: { transaccionId },
+        select: { id: true, pedidoId: true, ticketSnapshot: true },
+      });
+
+      if (ticketSnapshot === null) {
+        throw new ConflictException(
+          'No se puede confirmar el pago sin su ticket original',
+        );
+      }
+
+      await this.comprobantesService.emitir(tx, {
+        id,
+        pedidoId,
+        transaccionId,
+        ticketSnapshot,
+      });
+
+      return resultado;
+    });
+  }
+
   actualizarEstado(
     transaccionId: string,
     estadoActual: EstadoPago,
-    estadoNuevo: EstadoPago,
+    estadoNuevo: Exclude<EstadoPago, 'CONFIRMADO'>,
   ) {
     return this.prisma.pago.updateMany({
       where: {
@@ -99,9 +139,6 @@ export class PagoRepository {
       },
       data: {
         estado: estadoNuevo,
-        ...(estadoNuevo === EstadoPago.CONFIRMADO
-          ? { confirmadoEn: new Date() }
-          : {}),
         ...(estadoNuevo === EstadoPago.REEMBOLSADO
           ? { reembolsadoEn: new Date() }
           : {}),

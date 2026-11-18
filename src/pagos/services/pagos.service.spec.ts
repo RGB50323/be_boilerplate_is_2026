@@ -1,5 +1,6 @@
 
 import {
+  BadRequestException,
   BadGatewayException,
   ServiceUnavailableException,
   ConflictException,
@@ -34,6 +35,7 @@ describe('PagosService - BE-16.1', () => {
     buscarPorTransaccion: vi.fn(),
     obtenerEstado: vi.fn(),
     actualizarEstado: vi.fn(),
+    confirmarYEmitirComprobante: vi.fn(),
   };
 
   const pasarela = {
@@ -73,12 +75,12 @@ describe('PagosService - BE-16.1', () => {
       {
         cantidad: 2,
         precioUnitario: new Prisma.Decimal('8.99'),
-        platillo: { nombre: 'Hamburguesa' },
+        platillo: { id: 101, nombre: 'Hamburguesa' },
       },
       {
         cantidad: 2,
         precioUnitario: new Prisma.Decimal('2.25'),
-        platillo: { nombre: 'Limonada con soda' },
+        platillo: { id: 102, nombre: 'Limonada con soda' },
       },
     ],
   };
@@ -125,6 +127,70 @@ describe('PagosService - BE-16.1', () => {
       estado: EstadoPago.PENDIENTE,
     });
 
+    expect(repository.crear).toHaveBeenCalledExactlyOnceWith({
+      pedidoId: 54,
+      idempotencyKey: datos.solicitudId,
+      transaccionId: 'transaccion-test-01',
+      monto: 22.48,
+      estado: EstadoPago.PENDIENTE,
+      ticketSnapshot: {
+        version: 1,
+        pedidoId: 54,
+        items: [
+          { platilloId: 101, nombre: 'Hamburguesa', cantidad: 2, precioUnitario: '8.99', subtotal: '17.98' },
+          { platilloId: 102, nombre: 'Limonada con soda', cantidad: 2, precioUnitario: '2.25', subtotal: '4.50' },
+        ],
+        total: '22.48',
+      },
+    });
+  });
+
+  it('no guarda el ticket si contiene un articulo que no coincide con el pedido', async () => {
+    const ticket = {
+      ...datos.ticket,
+      items: [
+        { ...datos.ticket.items[0]!, nombre: 'Otro articulo' },
+        datos.ticket.items[1]!,
+      ],
+    };
+
+    await expect(service.procesarPago({ ...datos, ticket }, usuario))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.crear).not.toHaveBeenCalled();
+  });
+
+  it.each([null, { version: 1 }])(
+    'reutiliza el pago existente sin reescribir su snapshot (%j)',
+    async (ticketSnapshot) => {
+      repository.buscarPorSolicitud.mockResolvedValue({
+        id: 10,
+        pedidoId: 54,
+        transaccionId: 'transaccion-test-01',
+        monto: new Prisma.Decimal('22.48'),
+        estado: EstadoPago.PENDIENTE,
+        ticketSnapshot,
+      });
+
+      await expect(service.procesarPago(datos, usuario)).resolves.toMatchObject({ pagoId: 10 });
+      expect(repository.crear).not.toHaveBeenCalled();
+      expect(pasarela.procesarPago).not.toHaveBeenCalled();
+    },
+  );
+
+  it('recupera el pago ganador si dos solicitudes usan la misma clave', async () => {
+    repository.buscarPorSolicitud.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 11,
+      pedidoId: 54,
+      transaccionId: 'transaccion-ganadora',
+      monto: new Prisma.Decimal('22.48'),
+      estado: EstadoPago.PENDIENTE,
+    });
+    repository.crear.mockRejectedValue({ code: 'P2002' });
+
+    await expect(service.procesarPago(datos, usuario)).resolves.toMatchObject({
+      pagoId: 11,
+      transaccionId: 'transaccion-ganadora',
+    });
     expect(repository.crear).toHaveBeenCalledOnce();
   });
 
@@ -247,7 +313,7 @@ describe('PagosService - BE-16.1', () => {
 
     it('actualiza una transacción de PENDIENTE a CONFIRMADO', async () => {
         repository.buscarPorTransaccion.mockResolvedValue(pago);
-        repository.actualizarEstado.mockResolvedValue({ count: 1 });
+        repository.confirmarYEmitirComprobante.mockResolvedValue({ count: 1 });
 
         const pagoConfirmado = {
         ...pago,
@@ -267,18 +333,18 @@ describe('PagosService - BE-16.1', () => {
         EstadoTransaccionSimulada.CONFIRMADO,
         );
 
-        expect(repository.actualizarEstado).toHaveBeenCalledWith(
+        expect(repository.confirmarYEmitirComprobante).toHaveBeenCalledWith(
         transaccionId,
         EstadoPago.PENDIENTE,
-        EstadoPago.CONFIRMADO,
         );
+        expect(repository.actualizarEstado).not.toHaveBeenCalled();
 
         expect(resultado.estado).toBe(EstadoPago.CONFIRMADO);
     });
 
     it('notifica a H05 al confirmar un pedido para llevar', async () => {
       repository.buscarPorTransaccion.mockResolvedValue(pago);
-      repository.actualizarEstado.mockResolvedValue({ count: 1 });
+      repository.confirmarYEmitirComprobante.mockResolvedValue({ count: 1 });
       repository.obtenerEstado.mockResolvedValue({
         ...pago,
         estado: EstadoPago.CONFIRMADO,
@@ -301,7 +367,7 @@ describe('PagosService - BE-16.1', () => {
         },
       });
 
-      repository.actualizarEstado.mockResolvedValue({ count: 1 });
+      repository.confirmarYEmitirComprobante.mockResolvedValue({ count: 1 });
 
       repository.obtenerEstado.mockResolvedValue({
         ...pago,
@@ -327,14 +393,14 @@ describe('PagosService - BE-16.1', () => {
         ),
         ).rejects.toBeInstanceOf(NotFoundException);
 
-        expect(repository.actualizarEstado).not.toHaveBeenCalled();
+        expect(repository.confirmarYEmitirComprobante).not.toHaveBeenCalled();
     });
 
     it('detecta una modificación concurrente del estado', async () => {
         repository.buscarPorTransaccion.mockResolvedValue(pago);
 
         // Otro proceso modificó el estado antes de actualizar
-        repository.actualizarEstado.mockResolvedValue({ count: 0 });
+        repository.confirmarYEmitirComprobante.mockResolvedValue({ count: 0 });
 
         await expect(
         service.cambiarEstadoTransaccion(
@@ -343,11 +409,23 @@ describe('PagosService - BE-16.1', () => {
         ),
         ).rejects.toBeInstanceOf(ConflictException);
 
-        expect(repository.actualizarEstado).toHaveBeenCalledWith(
+        expect(repository.confirmarYEmitirComprobante).toHaveBeenCalledWith(
         transaccionId,
         EstadoPago.PENDIENTE,
-        EstadoPago.CONFIRMADO,
         );
+    });
+
+    it('propaga el fallo de emisión antes de notificar a H05', async () => {
+      const error = new Error('Falló la emisión');
+      repository.buscarPorTransaccion.mockResolvedValue(pago);
+      repository.confirmarYEmitirComprobante.mockRejectedValue(error);
+
+      await expect(service.cambiarEstadoTransaccion(
+        transaccionId,
+        EstadoTransaccionSimulada.CONFIRMADO,
+      )).rejects.toBe(error);
+      expect(pedidosLlevar.confirmarPago).not.toHaveBeenCalled();
+      expect(repository.obtenerEstado).not.toHaveBeenCalled();
     });
     });
 
