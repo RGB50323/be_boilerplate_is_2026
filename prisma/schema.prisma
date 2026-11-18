@@ -448,6 +448,7 @@ model Pago {
   idempotencyKey String     @unique @map("idempotency_key") @db.VarChar(64)
   transaccionId  String?    @unique @map("transaccion_id") @db.VarChar(80)
   monto          Decimal    @db.Decimal(10, 2)
+  ticketSnapshot Json?      @map("ticket_snapshot") @db.JsonB
   estado         EstadoPago @default(PENDIENTE)
   metodo         String?    @db.VarChar(30)
   creadoEn       DateTime   @default(now()) @map("creado_en")
@@ -471,6 +472,8 @@ model Comprobante {
   transaccionId String   @unique @map("transaccion_id") @db.VarChar(80)
   fechaEmision  DateTime @default(now()) @map("fecha_emision")
   archivoUrl    String?  @map("archivo_url") @db.VarChar(255)
+  contenidoSnapshot Json? @map("contenido_snapshot") @db.JsonB
+  primeraGeneracionPdfEn DateTime? @map("primera_generacion_pdf_en")
 
   pedido Pedido @relation(fields: [ticketId], references: [id])
   // DB-17.1: garantiza que la transacción pertenece al mismo pedido.

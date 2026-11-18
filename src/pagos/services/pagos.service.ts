@@ -19,6 +19,7 @@ import {
 
 import { ProcesarPagoDto } from '@Pagos/dto';
 import { PagoRepository } from '../repositories/pago.repository.js';
+import type { TicketSnapshot } from '../types/ticket-snapshot.js';
 import { PedidosLlevarService } from '../../pedidos/services/pedidos-llevar.service.js';
 
 import {
@@ -61,7 +62,7 @@ export class PagosService {
     }
 
     // 4. Validar estado y contenido del ticket
-    this.validarTicket(ticket, pedido);
+    const ticketSnapshot = this.validarTicket(ticket, pedido);
 
     // 5. Verificar si hay otro pago que impida cobrar
     const pagoBloqueante = await this.pagoRepository.buscarPagoBloqueante(
@@ -95,6 +96,7 @@ export class PagosService {
         transaccionId: resultado.transaccionId,
         monto: ticket.total,
         estado: EstadoPago.PENDIENTE,
+        ticketSnapshot,
       });
 
       return this.respuestaPago(pago);
@@ -127,7 +129,7 @@ export class PagosService {
     pedido: NonNullable<
       Awaited<ReturnType<PagoRepository['buscarPedido']>>
     >,
-  ): void {
+  ): TicketSnapshot {
     if (pedido.estado === EstadoPedido.CANCELADO) {
       throw new ConflictException(
         'No se puede procesar el pago de un pedido cancelado',
@@ -175,17 +177,18 @@ export class PagosService {
       })
       .sort();
 
-    const lineasPedido = pedido.detalles
-      .map((detalle) => {
-        const subtotal = detalle.precioUnitario.mul(detalle.cantidad);
+    const items = pedido.detalles.map((detalle) => ({
+      platilloId: detalle.platillo.id,
+      nombre: detalle.platillo.nombre,
+      cantidad: detalle.cantidad,
+      precioUnitario: detalle.precioUnitario.toFixed(2),
+      subtotal: detalle.precioUnitario.mul(detalle.cantidad).toFixed(2),
+    }));
 
-        return JSON.stringify([
-          detalle.platillo.nombre,
-          detalle.precioUnitario.toFixed(2),
-          detalle.cantidad,
-          subtotal.toFixed(2),
-        ]);
-      })
+    const lineasPedido = items
+      .map(({ nombre, precioUnitario, cantidad, subtotal }) =>
+        JSON.stringify([nombre, precioUnitario, cantidad, subtotal]),
+      )
       .sort();
 
     for (let i = 0; i < lineasTicket.length; i++) {
@@ -195,6 +198,13 @@ export class PagosService {
         );
       }
     }
+
+    return {
+      version: 1,
+      pedidoId: pedido.id,
+      items,
+      total: pedido.total.toFixed(2),
+    };
   }
 
   // =========================================================
@@ -229,11 +239,17 @@ export class PagosService {
     );
 
     // Actualización condicionada al estado anterior
-    const resultado = await this.pagoRepository.actualizarEstado(
-      transaccionId,
-      pago.estado,
-      estadoNuevo as EstadoPago,
-    );
+    const resultado =
+      estadoNuevo === EstadoTransaccionSimulada.CONFIRMADO
+        ? await this.pagoRepository.confirmarYEmitirComprobante(
+            transaccionId,
+            pago.estado,
+          )
+        : await this.pagoRepository.actualizarEstado(
+            transaccionId,
+            pago.estado,
+            estadoNuevo,
+          );
 
     if (resultado.count !== 1) {
       throw new ConflictException(
