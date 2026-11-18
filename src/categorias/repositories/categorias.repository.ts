@@ -46,10 +46,16 @@ export class CategoriasRepository {
     });
   }
 
-  buscarPlatillo(id: number) {
+  buscarPlatillo(id: number, sucursalId: number) {
     return this.prisma.platillo.findUnique({
       where: { id },
-      select: { id: true },
+      select: {
+        id: true,
+        sucursales: {
+          where: { sucursalId },
+          select: { id: true },
+        },
+      },
     });
   }
 

@@ -10,12 +10,11 @@ import {
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
-import { Roles } from '@Auth/decorators';
-import { Rol } from '@PrismaClient';
+import { CurrentUser, Roles } from '@Auth/decorators';
+import { Rol, type User } from '@PrismaClient';
 import { CategoriasService } from '../services/categorias.service.js';
 import { PlatilloCategoriaResponseDto } from '../dto/categorias-response.dto.js';
 import { CambiarCategoriaPlatilloDto } from '../dto/cambiar-categoria-platillo.dto.js';
-
 
 @ApiTags('Categorías')
 @ApiBearerAuth()
@@ -30,6 +29,10 @@ export class PlatilloCategoriaController {
   @ApiOperation({ summary: 'Asocia un platillo a otra categoría' })
   @ApiOkResponse({ type: PlatilloCategoriaResponseDto })
   @ApiBadRequestResponse({ description: 'El id o categoriaId no son válidos.' })
+  @ApiForbiddenResponse({
+    description:
+      'El usuario no es GERENTE, no tiene sucursal asignada o el platillo no pertenece a su sucursal.',
+  })
   @ApiNotFoundResponse({
     description: 'El platillo o la categoría no existen.',
   })
@@ -39,10 +42,12 @@ export class PlatilloCategoriaController {
   cambiarCategoria(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CambiarCategoriaPlatilloDto,
+    @CurrentUser() usuario: User,
   ): Promise<PlatilloCategoriaResponseDto> {
     return this.categoriasService.cambiarCategoriaDePlatillo(
       id,
       dto.categoriaId,
+      usuario.sucursalId,
     );
   }
 }
