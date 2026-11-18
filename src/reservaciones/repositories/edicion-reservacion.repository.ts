@@ -58,7 +58,7 @@ export class EdicionReservacionRepository {
   cancelar(id: number, modificadaEn: Date, tx: Prisma.TransactionClient) {
     return tx.reservacion.update({
       where: { id },
-      data: { estado: 'CANCELADA', modificadaEn },
+      data: { estado: 'CANCELADA', modificadaEn, canceladaEn: new Date() },
       include: detalle,
     });
   }
