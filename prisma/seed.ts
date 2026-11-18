@@ -171,6 +171,24 @@ const USUARIOS: UsuarioSeed[] = [
     nombre: 'Gina',
     apellido: 'General',
     rol: 'GERENTE_GENERAL',
+  },  // Clientes con reseñas de demostración
+  {
+    email: 'ana.cliente@example.com',
+    nombre: 'Ana',
+    apellido: 'López',
+    rol: 'CLIENTE',
+  },
+  {
+    email: 'beto.cliente@example.com',
+    nombre: 'Beto',
+    apellido: 'Martínez',
+    rol: 'CLIENTE',
+  },
+  {
+    email: 'diana.cliente@example.com',
+    nombre: 'Diana',
+    apellido: 'Pérez',
+    rol: 'CLIENTE',
   },
 ];
 
@@ -456,6 +474,422 @@ async function crearPedidosDemo(sucursalId: Map<string, number>) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Reseñas de demostración (calificaciones)
+// ---------------------------------------------------------------------------
+// Pedidos para llevar ya entregados y pagados, de varios clientes, con
+// reseñas que cumplen las mismas reglas que POST /resenas: el pedido es del
+// cliente, el pago está confirmado y la reseña se publica dentro de los 7
+// días posteriores al pago. Las fechas se recalculan en cada corrida.
+//
+// Qué se puede revisar con estos datos:
+// - GET /platillos/:id/resenas → Hamburguesa tiene 13 reseñas visibles
+//   (2 páginas de 10) y una oculta que no debe aparecer.
+// - GET /resenas/pendientes (demo@example.com) → Pupusa revuelta y Horchata
+//   del pedido R-0014 (además de los pedidos para llevar C-0002 y E-0002).
+//   El pedido R-0015 se pagó hace 10 días, así que ya no aparece.
+// Volver a correr el seed restaura las reseñas y los pendientes.
+// - GET /resenas/reporte (gerente@example.com, Centro) → promedio y
+//   distribución de 1 a 5 estrellas, con fechas en el último mes y medio.
+
+const CLIENTES_RESENAS = {
+  demo: 'demo@example.com',
+  ana: 'ana.cliente@example.com',
+  beto: 'beto.cliente@example.com',
+  diana: 'diana.cliente@example.com',
+} as const;
+
+type ItemResenaSeed = {
+  platillo: string;
+  cantidad: number;
+  // Sin estrellas = el cliente todavía no lo ha reseñado.
+  estrellas?: number;
+  comentario?: string;
+  oculta?: 'OFENSIVO' | 'SPAM' | 'NO_RELACIONADO';
+};
+
+type PedidoResenaSeed = {
+  numero: string;
+  cliente: keyof typeof CLIENTES_RESENAS;
+  sucursal: string;
+  diasDesdePago: number;
+  items: ItemResenaSeed[];
+};
+
+const PEDIDOS_RESENAS: PedidoResenaSeed[] = [
+  {
+    numero: 'R-0001',
+    cliente: 'ana',
+    sucursal: 'Centro',
+    diasDesdePago: 35,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 1,
+        estrellas: 5,
+        comentario: 'La mejor hamburguesa que he probado en la ciudad.',
+      },
+      { platillo: 'Limonada con soda', cantidad: 1, estrellas: 4 },
+    ],
+  },
+  {
+    numero: 'R-0002',
+    cliente: 'beto',
+    sucursal: 'Centro',
+    diasDesdePago: 30,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 2,
+        estrellas: 4,
+        comentario: 'Muy buena, aunque tardó un poco en salir.',
+      },
+      {
+        platillo: 'Nachos con queso',
+        cantidad: 1,
+        estrellas: 3,
+        comentario: 'Les faltaba queso.',
+      },
+    ],
+  },
+  {
+    numero: 'R-0003',
+    cliente: 'diana',
+    sucursal: 'Centro',
+    diasDesdePago: 26,
+    items: [
+      { platillo: 'Hamburguesa', cantidad: 1, estrellas: 5 },
+      {
+        platillo: 'Pupusa revuelta',
+        cantidad: 4,
+        estrellas: 5,
+        comentario: 'Como las de casa.',
+      },
+    ],
+  },
+  {
+    numero: 'R-0004',
+    cliente: 'ana',
+    sucursal: 'Escalón',
+    diasDesdePago: 22,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 1,
+        estrellas: 3,
+        comentario: 'Llegó algo fría.',
+      },
+      {
+        platillo: 'Horchata',
+        cantidad: 2,
+        estrellas: 5,
+        comentario: 'Muy refrescante.',
+      },
+    ],
+  },
+  {
+    numero: 'R-0005',
+    cliente: 'beto',
+    sucursal: 'Escalón',
+    diasDesdePago: 19,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 1,
+        estrellas: 2,
+        comentario: 'El pan estaba duro.',
+      },
+      { platillo: 'Alitas BBQ', cantidad: 1, estrellas: 4 },
+    ],
+  },
+  {
+    numero: 'R-0006',
+    cliente: 'diana',
+    sucursal: 'Centro',
+    diasDesdePago: 16,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 1,
+        estrellas: 5,
+        comentario: 'Excelente, volveré.',
+      },
+      {
+        platillo: 'Costillas BBQ',
+        cantidad: 1,
+        estrellas: 5,
+        comentario: 'Se deshacen solas.',
+      },
+      { platillo: 'Flan de caramelo', cantidad: 1, estrellas: 4 },
+    ],
+  },
+  {
+    numero: 'R-0007',
+    cliente: 'demo',
+    sucursal: 'Centro',
+    diasDesdePago: 14,
+    items: [
+      { platillo: 'Hamburguesa', cantidad: 1, estrellas: 4 },
+      {
+        platillo: 'Yuca frita',
+        cantidad: 1,
+        estrellas: 1,
+        comentario: 'Visitá mi página y ganá premios: www.ejemplo-spam.test',
+        oculta: 'SPAM',
+      },
+    ],
+  },
+  {
+    numero: 'R-0008',
+    cliente: 'ana',
+    sucursal: 'Centro',
+    diasDesdePago: 12,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 2,
+        estrellas: 5,
+        comentario: 'Pedí dos y las dos llegaron perfectas.',
+      },
+      {
+        platillo: 'Pollo a la plancha',
+        cantidad: 1,
+        estrellas: 4,
+        comentario: 'Buena porción.',
+      },
+    ],
+  },
+  {
+    numero: 'R-0009',
+    cliente: 'beto',
+    sucursal: 'Centro',
+    diasDesdePago: 10,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 1,
+        estrellas: 1,
+        comentario: 'Comentario ofensivo de prueba (oculto por el gerente).',
+        oculta: 'OFENSIVO',
+      },
+      { platillo: 'Limonada con soda', cantidad: 1, estrellas: 5 },
+    ],
+  },
+  {
+    numero: 'R-0010',
+    cliente: 'diana',
+    sucursal: 'Escalón',
+    diasDesdePago: 9,
+    items: [
+      { platillo: 'Hamburguesa', cantidad: 1, estrellas: 4 },
+      {
+        platillo: 'Nachos con queso',
+        cantidad: 1,
+        estrellas: 4,
+        comentario: 'Buenos para compartir.',
+      },
+    ],
+  },
+  {
+    numero: 'R-0011',
+    cliente: 'ana',
+    sucursal: 'Centro',
+    diasDesdePago: 6,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 1,
+        estrellas: 5,
+        comentario: 'Siempre consistente.',
+      },
+      {
+        platillo: 'Flan de caramelo',
+        cantidad: 1,
+        estrellas: 2,
+        comentario: 'Demasiado dulce para mi gusto.',
+      },
+    ],
+  },
+  {
+    numero: 'R-0012',
+    cliente: 'beto',
+    sucursal: 'Escalón',
+    diasDesdePago: 5,
+    items: [
+      { platillo: 'Hamburguesa', cantidad: 1, estrellas: 3 },
+      { platillo: 'Costillas BBQ', cantidad: 1, estrellas: 4 },
+    ],
+  },
+  {
+    numero: 'R-0013',
+    cliente: 'diana',
+    sucursal: 'Centro',
+    diasDesdePago: 3,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 1,
+        estrellas: 5,
+        comentario: 'La volví a pedir y sigue igual de buena.',
+      },
+      { platillo: 'Horchata', cantidad: 1, estrellas: 4 },
+    ],
+  },
+  {
+    // Pendientes de demo@example.com: Pupusa revuelta y Horchata.
+    numero: 'R-0014',
+    cliente: 'demo',
+    sucursal: 'Centro',
+    diasDesdePago: 2,
+    items: [
+      {
+        platillo: 'Hamburguesa',
+        cantidad: 1,
+        estrellas: 5,
+        comentario: 'Rica, como siempre.',
+      },
+      { platillo: 'Pupusa revuelta', cantidad: 3 },
+      { platillo: 'Horchata', cantidad: 1 },
+    ],
+  },
+  {
+    // Pagado hace más de 7 días y sin reseñas: ya no debe salir en pendientes.
+    numero: 'R-0015',
+    cliente: 'demo',
+    sucursal: 'Escalón',
+    diasDesdePago: 10,
+    items: [
+      { platillo: 'Alitas BBQ', cantidad: 1 },
+      { platillo: 'Nachos con queso', cantidad: 1 },
+    ],
+  },
+];
+
+const UN_DIA_MS = 24 * 60 * 60 * 1000;
+
+async function crearResenasDemo(
+  sucursalId: Map<string, number>,
+  platilloId: Map<string, number>,
+) {
+  const clientes = new Map<string, string>();
+  for (const [clave, email] of Object.entries(CLIENTES_RESENAS)) {
+    const u = await prisma.user.findUniqueOrThrow({ where: { email } });
+    clientes.set(clave, u.id);
+  }
+  const gerente = await prisma.user.findUniqueOrThrow({
+    where: { email: 'gerente@example.com' },
+  });
+  const ahora = Date.now();
+  let publicadas = 0;
+
+  for (const p of PEDIDOS_RESENAS) {
+    const sId = sucursalId.get(p.sucursal);
+    const clienteId = clientes.get(p.cliente);
+    if (sId === undefined || clienteId === undefined)
+      throw new Error(`Datos inválidos en ${p.numero}`);
+
+    const items = p.items.map((item) => {
+      const platillo = PLATILLOS.find((pl) => pl.nombre === item.platillo);
+      const id = platilloId.get(item.platillo);
+      if (!platillo || id === undefined)
+        throw new Error(`Platillo inexistente: ${item.platillo}`);
+      const [precio] =
+        p.sucursal === 'Centro' ? platillo.centro : platillo.escalon;
+      return { ...item, platilloId: id, precio };
+    });
+    const total =
+      Math.round(items.reduce((t, i) => t + i.precio * i.cantidad, 0) * 100) /
+      100;
+    const pagadoEn = new Date(ahora - p.diasDesdePago * UN_DIA_MS);
+    const creadoEn = new Date(pagadoEn.getTime() - 25 * 60_000);
+
+    const datos = {
+      tipo: 'LLEVAR' as const,
+      estado: 'ENTREGADO' as const,
+      clienteId,
+      subtotal: total,
+      total,
+      creadoEn,
+    };
+    const pedido = await prisma.pedido.upsert({
+      where: { sucursalId_numero: { sucursalId: sId, numero: p.numero } },
+      update: datos,
+      create: { ...datos, sucursalId: sId, numero: p.numero },
+    });
+
+    await prisma.detallePedido.deleteMany({ where: { pedidoId: pedido.id } });
+    await prisma.detallePedido.createMany({
+      data: items.map((item) => ({
+        pedidoId: pedido.id,
+        platilloId: item.platilloId,
+        cantidad: item.cantidad,
+        precioUnitario: item.precio,
+        estado: 'ENTREGADO' as const,
+        enviadoEn: creadoEn,
+        listoEn: pagadoEn,
+        entregadoEn: pagadoEn,
+      })),
+    });
+
+    const pago = {
+      monto: total,
+      estado: 'CONFIRMADO' as const,
+      metodo: 'TARJETA',
+      creadoEn,
+      confirmadoEn: pagadoEn,
+    };
+    await prisma.pago.upsert({
+      where: { idempotencyKey: `seed-${p.numero}` },
+      update: pago,
+      create: {
+        ...pago,
+        pedidoId: pedido.id,
+        idempotencyKey: `seed-${p.numero}`,
+      },
+    });
+
+    for (const item of items) {
+      const clave = {
+        pedidoId_platilloId: {
+          pedidoId: pedido.id,
+          platilloId: item.platilloId,
+        },
+      };
+      if (item.estrellas === undefined) {
+        // Pendiente: se borra si quedó de una corrida anterior.
+        await prisma.resena.deleteMany({
+          where: { pedidoId: pedido.id, platilloId: item.platilloId },
+        });
+        continue;
+      }
+      // Publicada un día después del pago (dentro del plazo de 7 días).
+      const creadaEn = new Date(pagadoEn.getTime() + UN_DIA_MS);
+      const resena = {
+        clienteId,
+        estrellas: item.estrellas,
+        comentario: item.comentario ?? null,
+        creadaEn,
+        estado: item.oculta ? ('OCULTA' as const) : ('VISIBLE' as const),
+        ocultaPorId: item.oculta ? gerente.id : null,
+        ocultaEn: item.oculta
+          ? new Date(creadaEn.getTime() + 2 * 60 * 60_000)
+          : null,
+        motivoOcultacion: item.oculta ?? null,
+      };
+      await prisma.resena.upsert({
+        where: clave,
+        update: resena,
+        create: { ...resena, pedidoId: pedido.id, platilloId: item.platilloId },
+      });
+      publicadas++;
+    }
+  }
+
+  console.log(
+    `Reseñas de demostración: ${publicadas} en ${PEDIDOS_RESENAS.length} pedidos (R-0001 a R-${String(PEDIDOS_RESENAS.length).padStart(4, '0')}).`,
+  );
+}
+
 async function main() {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('El seed no se ejecuta en producción.');
@@ -684,6 +1118,7 @@ async function main() {
     }
   }
 
+  await crearResenasDemo(sucursalId, platilloId);
   await crearPedidosDemo(sucursalId);
 
   console.log('Seed listo.');
