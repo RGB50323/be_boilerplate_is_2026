@@ -106,6 +106,26 @@ export class ResenaRepository {
     });
   }
 
+  nombreSucursal(id: number) {
+    return this.prisma.sucursal.findUnique({
+      where: { id },
+      select: { nombre: true },
+    });
+  }
+
+  // H23: reseñas visibles de la sucursal agrupadas por estrellas
+  distribucionSucursal(sucursalId: number, inicio?: Date, fin?: Date) {
+    return this.prisma.resena.groupBy({
+      by: ['estrellas'],
+      where: {
+        estado: EstadoResena.VISIBLE,
+        pedido: { sucursalId },
+        creadaEn: { gte: inicio, lt: fin },
+      },
+      _count: { _all: true },
+    });
+  }
+
   findPagina(platilloId: number, skip: number, take: number) {
     return this.prisma.resena.findMany({
       where: { platilloId, estado: EstadoResena.VISIBLE },
