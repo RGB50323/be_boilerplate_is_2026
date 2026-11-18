@@ -14,13 +14,17 @@ import type {
 } from '@Reservaciones/dto';
 
 import {
-  codigoReservacion,
   diaDeReserva,
-  fechaHoraLocal,
   validarHorarioReservacion,
 } from '../utils/horario-reservacion.js';
 import { paginar } from '@Common/paginacion';
 import { AvisosReservacionService } from './avisos-reservacion.service.js';
+
+import {
+  resumenReservacion,
+  horarioRespuesta,
+  mesaDisponibleRespuesta,
+} from '../utils/reservacion-respuesta.js';
 
 @Injectable()
 export class ReservacionesService {
@@ -88,19 +92,7 @@ export class ReservacionesService {
       Awaited<ReturnType<ReservacionRepository['crearConfirmada']>>
     >,
   ): ReservacionResponseDto {
-    // El almacenamiento es UTC; la respuesta utiliza la misma hora local de H09.
-    const { fecha, hora } = fechaHoraLocal(reservacion.inicio);
-    return {
-      reservacionId: codigoReservacion(reservacion.id),
-      estado: reservacion.estado,
-      mesaId: reservacion.mesaId,
-      mesa: reservacion.mesa.numero,
-      sucursalId: reservacion.mesa.sucursalId,
-      sucursal: reservacion.mesa.sucursal.nombre,
-      fecha,
-      hora,
-      personas: reservacion.personas,
-    };
+    return resumenReservacion(reservacion);
   }
 
   async listarSucursales(): Promise<SucursalResponseDto[]> {
@@ -109,13 +101,7 @@ export class ReservacionesService {
     return sucursales.map(({ id, nombre, horarios }) => ({
       id,
       nombre,
-      horarios: horarios.map(({ diaSemana, apertura, cierre }) => ({
-        diaSemana,
-        // Prisma representa TIME con Date. Se conserva la hora local del seed,
-        // sin exponer la fecha auxiliar ni aplicar otro desplazamiento horario.
-        apertura: apertura.toISOString().slice(11, 16),
-        cierre: cierre.toISOString().slice(11, 16),
-      })),
+      horarios: horarios.map(horarioRespuesta),
     }));
   }
 
@@ -148,11 +134,6 @@ export class ReservacionesService {
       inicio,
       fin,
     });
-    return mesas.map(({ id, numero, capacidad, zona }) => ({
-      mesaId: id,
-      numero,
-      capacidad,
-      zona,
-    }));
+    return mesas.map(mesaDisponibleRespuesta);
   }
 }

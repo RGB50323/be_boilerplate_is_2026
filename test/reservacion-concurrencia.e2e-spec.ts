@@ -18,7 +18,8 @@ import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
 
 // Opt-in: ejecutar solo con una base temporal migrada. Nunca usa DATABASE_URL.
 const url = process.env.TEST_DATABASE_URL;
-describe.skipIf(!url)('H10 con PostgreSQL real', () => {
+const baseTemporal = url && new URL(url).pathname === '/h10_test';
+describe.skipIf(!baseTemporal)('H10 con PostgreSQL real', () => {
   let prisma: PrismaClient;
   let app: INestApplication;
   let sucursalId: number;
@@ -40,7 +41,11 @@ describe.skipIf(!url)('H10 con PostgreSQL real', () => {
     });
     for (const id of usuarios)
       await prisma.user.create({
-        data: { id, email: `${id}@example.test`, passwordHash: 'no-utilizado' },
+        data: {
+          id,
+          email: `${id}@example.test`,
+          passwordHash: 'no-utilizado',
+        },
       });
     const sucursal = await prisma.sucursal.create({
       data: {
@@ -65,7 +70,7 @@ describe.skipIf(!url)('H10 con PostgreSQL real', () => {
         // H26: los avisos no se prueban aquí
         {
           provide: AvisosReservacionService,
-          useValue: { creada: async () => undefined },
+          useValue: { creada: async () => true },
         },
         ReservacionRepository,
         { provide: PrismaService, useValue: prisma },
@@ -115,7 +120,9 @@ describe.skipIf(!url)('H10 con PostgreSQL real', () => {
     expect(respuestas.map((r) => r.status).sort((a, b) => a - b)).toEqual([
       201, 409,
     ]);
-    const guardadas = await prisma.reservacion.findMany({ where: { mesaId } });
+    const guardadas = await prisma.reservacion.findMany({
+      where: { mesaId },
+    });
     expect(guardadas).toHaveLength(1);
     expect(guardadas[0].clienteId).toBe(
       usuarios[respuestas.findIndex((r) => r.status === 201)],
@@ -141,7 +148,11 @@ describe.skipIf(!url)('H10 con PostgreSQL real', () => {
     await confirmar().expect(201);
     const r = await request(app.getHttpServer())
       .get(`/api/v1/sucursales/${sucursalId}/mesas-disponibles`)
-      .query({ fecha: datos.fecha, hora: datos.hora, personas: datos.personas })
+      .query({
+        fecha: datos.fecha,
+        hora: datos.hora,
+        personas: datos.personas,
+      })
       .expect(200);
     expect(r.body).toEqual([]);
   });

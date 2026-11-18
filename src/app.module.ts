@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { PagosModule } from '@Pagos';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from '@Auth';
@@ -9,6 +10,7 @@ import { CocinaModule } from '@Cocina';
 import { HealthModule } from '@Health';
 import { PrismaModule } from '@Prisma';
 import { ReservacionesModule } from '@Reservaciones';
+import { DashboardModule } from '@Dashboard';
 import { UsersModule } from '@Users';
 import { NotificacionesModule } from '@Notificaciones';
 import { validateEnv } from '@Config';
@@ -36,6 +38,8 @@ import { ResenasModule } from '@Resenas';
     AuthModule,
     MenuModule,
     ReservacionesModule,
+    PagosModule,
+    DashboardModule,
     CocinaModule,
     CategoriasModule,
     PlatillosModule,

@@ -1,7 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
-import { EstadoItem, EstadoPago, TipoPedido, type Prisma } from '@PrismaClient';
+import {
+  EstadoItem,
+  EstadoPago,
+  EstadoPedido,
+  Prisma,
+  TipoPedido,
+} from '@PrismaClient';
 import { ESTADOS_EN_COCINA } from '@Cocina/constants';
+import {
+  ItemDeOtraSucursalError,
+  ItemNoEncontradoError,
+  ItemNoPendienteError,
+  PedidoFueraDeCocinaError,
+} from '@Cocina/errors';
 
 const PEDIDO_COCINA_INCLUDE = {
   mesa: { select: { numero: true } },
@@ -15,6 +27,21 @@ const PEDIDO_COCINA_INCLUDE = {
 export type PedidoCocina = Prisma.PedidoGetPayload<{
   include: typeof PEDIDO_COCINA_INCLUDE;
 }>;
+
+export interface ItemMarcadoListo {
+  itemId: number;
+  pedidoId: number;
+  listoEn: Date;
+  pedidoEstado: EstadoPedido;
+  pedidoCompletado: boolean;
+}
+
+interface FilaItemBloqueado {
+  pedidoId: number;
+  sucursalId: number;
+  estadoItem: EstadoItem;
+  estadoPedido: EstadoPedido;
+}
 
 @Injectable()
 export class PedidoCocinaRepository {
@@ -33,6 +60,51 @@ export class PedidoCocinaRepository {
       },
       include: PEDIDO_COCINA_INCLUDE,
       orderBy: [{ creadoEn: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  marcarItemListo(itemId: number, sucursalId: number): Promise<ItemMarcadoListo> {
+    return this.prisma.$transaction(async (tx) => {
+      const [fila] = await tx.$queryRaw<FilaItemBloqueado[]>(Prisma.sql`
+        SELECT d.pedido_id AS "pedidoId", p.sucursal_id AS "sucursalId",
+          d.estado AS "estadoItem", p.estado AS "estadoPedido"
+        FROM detalle_pedido d
+        JOIN pedido p ON p.id = d.pedido_id
+        WHERE d.id = ${itemId}
+        FOR UPDATE OF d, p
+      `);
+
+      if (!fila) throw new ItemNoEncontradoError(itemId);
+      if (fila.sucursalId !== sucursalId) throw new ItemDeOtraSucursalError(itemId);
+      if (fila.estadoItem !== EstadoItem.PENDIENTE) throw new ItemNoPendienteError(itemId);
+      if (!ESTADOS_EN_COCINA.includes(fila.estadoPedido)) {
+        throw new PedidoFueraDeCocinaError(fila.pedidoId);
+      }
+
+      const { listoEn } = await tx.detallePedido.update({
+        where: { id: itemId },
+        data: { estado: EstadoItem.LISTO, listoEn: new Date() },
+        select: { listoEn: true },
+      });
+
+      const pendientes = await tx.detallePedido.count({
+        where: { pedidoId: fila.pedidoId, estado: EstadoItem.PENDIENTE },
+      });
+      const pedidoCompletado = pendientes === 0;
+      if (pedidoCompletado) {
+        await tx.pedido.update({
+          where: { id: fila.pedidoId },
+          data: { estado: EstadoPedido.LISTO },
+        });
+      }
+
+      return {
+        itemId,
+        pedidoId: fila.pedidoId,
+        listoEn: listoEn as Date,
+        pedidoEstado: pedidoCompletado ? EstadoPedido.LISTO : fila.estadoPedido,
+        pedidoCompletado,
+      };
     });
   }
 

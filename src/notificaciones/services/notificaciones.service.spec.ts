@@ -51,14 +51,20 @@ describe('NotificacionesService', () => {
       registradas: 1,
       omitidasPorDuplicado: 0,
     });
-    expect(repository.resolverUsuarioActivo).toHaveBeenCalledWith(USUARIO_ID);
-    expect(repository.crearMuchas).toHaveBeenCalledWith([
-      expect.objectContaining({
-        destinatarioId: USUARIO_ID,
-        titulo: 'Pedido listo',
-        estadoCorreo: null,
-      }),
-    ]);
+    expect(repository.resolverUsuarioActivo).toHaveBeenCalledWith(
+      USUARIO_ID,
+      undefined,
+    );
+    expect(repository.crearMuchas).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          destinatarioId: USUARIO_ID,
+          titulo: 'Pedido listo',
+          estadoCorreo: null,
+        }),
+      ],
+      undefined,
+    );
   });
 
   it('resuelve un grupo por rol y sucursal y registra solo los usuarios activos devueltos', async () => {
@@ -74,11 +80,18 @@ describe('NotificacionesService', () => {
       destinatario: { rol: Rol.MESERO, sucursalId: 7 },
     });
 
-    expect(repository.resolverGrupoActivo).toHaveBeenCalledWith(Rol.MESERO, 7);
-    expect(repository.crearMuchas).toHaveBeenCalledWith([
-      expect.objectContaining({ destinatarioId: USUARIO_ID }),
-      expect.objectContaining({ destinatarioId: OTRO_USUARIO_ID }),
-    ]);
+    expect(repository.resolverGrupoActivo).toHaveBeenCalledWith(
+      Rol.MESERO,
+      7,
+      undefined,
+    );
+    expect(repository.crearMuchas).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ destinatarioId: USUARIO_ID }),
+        expect.objectContaining({ destinatarioId: OTRO_USUARIO_ID }),
+      ],
+      undefined,
+    );
     expect(resultado.registradas).toBe(2);
   });
 
