@@ -55,6 +55,14 @@ export class EdicionReservacionRepository {
       });
   }
 
+  cancelar(id: number, modificadaEn: Date, tx: Prisma.TransactionClient) {
+    return tx.reservacion.update({
+      where: { id },
+      data: { estado: 'CANCELADA', modificadaEn },
+      include: detalle,
+    });
+  }
+
   mesa(id: number, tx: Prisma.TransactionClient) {
     return tx.mesa.findUnique({
       where: { id },
