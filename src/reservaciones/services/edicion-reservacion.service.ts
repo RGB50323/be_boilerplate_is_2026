@@ -4,8 +4,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ModuloOrigen } from '@PrismaClient';
-import { NotificacionesService } from '@Notificaciones/services';
 import {
   EdicionReservacionRepository,
   ReservacionRepository,
@@ -24,12 +22,13 @@ import {
   horarioRespuesta,
   mesaDisponibleRespuesta,
 } from '../utils/reservacion-respuesta.js';
+import { AvisosReservacionService } from './avisos-reservacion.service.js';
 
 @Injectable()
 export class EdicionReservacionService {
   constructor(
     private readonly repository: EdicionReservacionRepository,
-    private readonly avisos: NotificacionesService,
+    private readonly avisos: AvisosReservacionService,
     private readonly disponibilidad: ReservacionRepository,
   ) {}
 
@@ -103,8 +102,9 @@ export class EdicionReservacionService {
     clienteId: string,
     datos: ModificarReservacionDto,
   ) {
+    let correos: string[] = [];
     try {
-      return await this.repository.editar(
+      const respuesta = await this.repository.editar(
         this.id(id),
         clienteId,
         async (reserva, tx) => {
@@ -163,22 +163,13 @@ export class EdicionReservacionService {
           );
           const respuesta = this.respuesta(actualizada);
           // El aviso y la modificación se confirman juntos; un fallo conserva los datos originales.
-          await this.avisos.notificar(
-            {
-              destinatario: { usuarioId: clienteId },
-              titulo: 'Reservación modificada',
-              mensaje: `${respuesta.reservacionId}: mesa ${respuesta.mesa}, ${respuesta.sucursal}, ${respuesta.fecha} a las ${respuesta.hora}, ${respuesta.personas} personas.`,
-              moduloOrigen: ModuloOrigen.RESERVACIONES,
-              referencia: {
-                tipo: 'reservacion-modificada',
-                id: `${reserva.id}:${respuesta.version}`,
-              },
-            },
-            tx,
-          );
+          correos = await this.avisos.registrarModificada(actualizada, tx);
           return respuesta;
         },
       );
+      // El correo sale solo después del commit
+      this.avisos.enviarCorreos(correos);
+      return respuesta;
     } catch (error) {
       if (error instanceof MesaNoDisponibleError) {
         throw new ConflictException({

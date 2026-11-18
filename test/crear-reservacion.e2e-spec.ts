@@ -5,6 +5,7 @@ import { UnauthorizedException, type INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { ReservasClienteController } from '../dist/reservaciones/controllers/reservas-cliente.controller.js';
 import { ReservacionesService } from '../dist/reservaciones/services/reservaciones.service.js';
+import { AvisosReservacionService } from '../dist/reservaciones/services/avisos-reservacion.service.js';
 import { ReservacionRepository } from '../dist/reservaciones/repositories/reservacion.repository.js';
 import { JwtAuthGuard } from '../dist/auth/guards/jwt-auth.guard.js';
 import { AuthService } from '../dist/auth/services/auth.service.js';
@@ -38,6 +39,11 @@ beforeAll(async () => {
     controllers: [ReservasClienteController],
     providers: [
       ReservacionesService,
+      // H26: los avisos no se prueban aquí
+      {
+        provide: AvisosReservacionService,
+        useValue: { creada: async () => undefined },
+      },
       { provide: ReservacionRepository, useValue: repo },
       {
         provide: AuthService,

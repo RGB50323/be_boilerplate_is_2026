@@ -15,6 +15,7 @@ import { ReservacionesService } from '../dist/reservaciones/services/reservacion
 import { EdicionReservacionRepository } from '../dist/reservaciones/repositories/edicion-reservacion.repository.js';
 import { NotificacionesService } from '../dist/notificaciones/services/notificaciones.service.js';
 import { NotificacionRepository } from '../dist/notificaciones/repositories/notificacion.repository.js';
+import { AvisosReservacionService } from '../dist/reservaciones/services/avisos-reservacion.service.js';
 import { JwtAuthGuard } from '../dist/auth/guards/jwt-auth.guard.js';
 import { AuthService } from '../dist/auth/services/auth.service.js';
 import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
@@ -101,6 +102,7 @@ describe.skipIf(!baseTemporal)('H11 con PostgreSQL real', () => {
         EdicionReservacionRepository,
         { provide: PrismaService, useValue: prisma },
         { provide: NotificacionesService, useValue: avisos },
+        AvisosReservacionService,
         {
           provide: AuthService,
           useValue: {
@@ -165,6 +167,17 @@ describe.skipIf(!baseTemporal)('H11 con PostgreSQL real', () => {
     });
     expect(notificaciones).toHaveLength(2);
     expect(notificaciones.some((n) => n.mensaje.includes('15:00'))).toBe(true);
+    // H26: formato común y correo enviado después del commit
+    expect(
+      notificaciones.every((n) => n.referenciaTipo === 'RESERVA_MODIFICADA'),
+    ).toBe(true);
+    await vi.waitFor(async () => {
+      const correos = await prisma.notificacion.findMany({
+        where: { destinatarioId: usuarios[0] },
+        select: { estadoCorreo: true },
+      });
+      expect(correos.every((c) => c.estadoCorreo === 'ENVIADO')).toBe(true);
+    });
   });
   it('conserva versión y no avisa cuando se guarda sin cambios', async () => {
     const respuesta = await patch().expect(200);

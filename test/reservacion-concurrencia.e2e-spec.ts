@@ -10,6 +10,7 @@ import { PrismaService } from '../dist/prisma/services/prisma.service.js';
 import { ReservasClienteController } from '../dist/reservaciones/controllers/reservas-cliente.controller.js';
 import { ReservacionesController } from '../dist/reservaciones/controllers/reservaciones.controller.js';
 import { ReservacionesService } from '../dist/reservaciones/services/reservaciones.service.js';
+import { AvisosReservacionService } from '../dist/reservaciones/services/avisos-reservacion.service.js';
 import { ReservacionRepository } from '../dist/reservaciones/repositories/reservacion.repository.js';
 import { JwtAuthGuard } from '../dist/auth/guards/jwt-auth.guard.js';
 import { AuthService } from '../dist/auth/services/auth.service.js';
@@ -66,6 +67,11 @@ describe.skipIf(!baseTemporal)('H10 con PostgreSQL real', () => {
       controllers: [ReservasClienteController, ReservacionesController],
       providers: [
         ReservacionesService,
+        // H26: los avisos no se prueban aquí
+        {
+          provide: AvisosReservacionService,
+          useValue: { creada: async () => true },
+        },
         ReservacionRepository,
         { provide: PrismaService, useValue: prisma },
         {

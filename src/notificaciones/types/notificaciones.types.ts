@@ -21,6 +21,8 @@ export interface Aviso {
 export interface ResultadoNotificacion {
   registradas: number;
   omitidasPorDuplicado: number;
+  // Con transacción: correos a enviar con enviarCorreosPendientes tras el commit
+  correosPendientes?: string[];
 }
 
 export interface DestinatarioResuelto {

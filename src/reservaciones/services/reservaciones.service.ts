@@ -18,6 +18,7 @@ import {
   validarHorarioReservacion,
 } from '../utils/horario-reservacion.js';
 import { paginar } from '@Common/paginacion';
+import { AvisosReservacionService } from './avisos-reservacion.service.js';
 
 import {
   resumenReservacion,
@@ -27,7 +28,10 @@ import {
 
 @Injectable()
 export class ReservacionesService {
-  constructor(private readonly reservacionRepository: ReservacionRepository) {}
+  constructor(
+    private readonly reservacionRepository: ReservacionRepository,
+    private readonly avisos: AvisosReservacionService,
+  ) {}
 
   async crear(
     clienteId: string,
@@ -68,6 +72,7 @@ export class ReservacionesService {
       throw new ConflictException(
         'La mesa ya no está disponible en ese horario. Elegí otra mesa.',
       );
+    await this.avisos.creada(reservacion.id);
     return this.respuesta(reservacion);
   }
 

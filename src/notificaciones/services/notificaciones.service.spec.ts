@@ -191,6 +191,37 @@ describe('NotificacionesService', () => {
     });
   });
 
+  it('con transacción deja el correo PENDIENTE y lo envía solo al pedirlo tras el commit', async () => {
+    const { service, repository, enviadorCorreo } = crearContexto();
+    repository.buscarCreadasParaCorreo.mockResolvedValue([
+      {
+        id: NOTIFICACION_ID,
+        email: 'cliente@example.com',
+        titulo: 'Pedido listo',
+        mensaje: 'Tu pedido ya está listo.',
+      },
+    ]);
+    const tx = {} as never;
+
+    const resultado = await service.notificar(
+      { ...avisoBase(), enviarCorreo: true },
+      tx,
+    );
+
+    expect(resultado.correosPendientes).toHaveLength(1);
+    expect(repository.crearMuchas).toHaveBeenCalledWith(
+      [expect.objectContaining({ estadoCorreo: EstadoCorreo.PENDIENTE })],
+      tx,
+    );
+    expect(repository.buscarCreadasParaCorreo).not.toHaveBeenCalled();
+    expect(enviadorCorreo.enviar).not.toHaveBeenCalled();
+
+    service.enviarCorreosPendientes(resultado.correosPendientes ?? []);
+    await vi.waitFor(() => {
+      expect(enviadorCorreo.enviar).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('conserva la notificación y marca FALLIDO tras tres intentos de correo', async () => {
     const { service, repository, enviadorCorreo, esperarReintento } =
       crearContexto();

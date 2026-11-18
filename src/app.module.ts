@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { PagosModule } from '@Pagos';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from '@Auth';
 import { JwtAuthGuard, RolesGuard } from '@Auth/guards';
 import { CocinaModule } from '@Cocina';
@@ -28,6 +29,8 @@ import { ResenasModule } from '@Resenas';
       validate: validateEnv,
     }),
     EventEmitterModule.forRoot(),
+    // Procesos programados (recordatorios de reservación)
+    ScheduleModule.forRoot(),
     PrismaModule,
     HealthModule,
     UsersModule,
