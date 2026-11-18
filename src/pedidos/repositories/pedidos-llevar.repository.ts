@@ -154,6 +154,21 @@ export class PedidosLlevarRepository {
     });
   }
 
+  // Datos para avisar al cliente que su pedido está listo (H25)
+  buscarParaAvisoListo(id: number) {
+    return this.prisma.pedido.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        tipo: true,
+        estado: true,
+        clienteId: true,
+        numero: true,
+        sucursal: { select: { nombre: true } },
+      },
+    });
+  }
+
   buscarSeguimiento(id: number) {
     return this.prisma.pedido.findUnique({
       where: { id },
