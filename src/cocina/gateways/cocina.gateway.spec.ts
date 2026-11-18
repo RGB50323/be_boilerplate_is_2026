@@ -133,6 +133,17 @@ describe('CocinaGateway', () => {
     await expect(pedidoListo).resolves.toEqual(pedido);
   });
 
+  it('reenvía pedido:entregado a la room de la sucursal', async () => {
+    const socket = conectar('token-cocina-a');
+    await resultadoConexion(socket);
+
+    const pedido = { id: 120 } as PedidoCocinaDto;
+    const recibido = new Promise((resolve) => socket.once('pedido:entregado', resolve));
+    eventEmitter.emit(CocinaEvento.PEDIDO_ENTREGADO, { sucursalId: 1, pedido });
+
+    await expect(recibido).resolves.toEqual(pedido);
+  });
+
   it('reenvía pedido:retirado con solo el id', async () => {
     const socket = conectar('token-cocina-b');
     await resultadoConexion(socket);

@@ -6,6 +6,7 @@ export const CocinaEvento = {
   PEDIDO_RETIRADO: 'cocina.pedido.retirado',
   ITEM_LISTO: 'cocina.item.listo',
   PEDIDO_LISTO: 'cocina.pedido.listo',
+  PEDIDO_ENTREGADO: 'cocina.pedido.entregado',
 } as const;
 
 export interface PedidoCocinaEvento {
@@ -24,4 +25,5 @@ export interface CocinaServerToClientEvents {
   'pedido:retirado': (payload: { id: number }) => void;
   'item:listo': (pedido: PedidoCocinaDto) => void;
   'pedido:listo': (pedido: PedidoCocinaDto) => void;
+  'pedido:entregado': (pedido: PedidoCocinaDto) => void;
 }

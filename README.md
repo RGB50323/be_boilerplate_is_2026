@@ -17,6 +17,7 @@ API REST construida con **NestJS 12**, **Prisma 7** y **PostgreSQL 18**, con aut
 - [Autenticación](#autenticación)
 - [Endpoints](#endpoints)
 - [Cocina: pedidos pendientes (H06)](#cocina-pedidos-pendientes-h06)
+- [Mesero: entrega de platillos (H08)](#mesero-entrega-de-platillos-h08)
 - [Dashboard de ventas (H28)](#dashboard-de-ventas-h28)
 - [Paginación común](#paginación-común)
 - [Arquitectura por capas](#arquitectura-por-capas)
@@ -324,6 +325,8 @@ Base: `http://localhost:3000/api/v1` · Documentación interactiva: `http://loca
 | `GET` | `/auth/me` | Bearer | `200` | Usuario autenticado |
 | `GET` | `/cocina/pedidos` | Bearer · `COCINA`, `GERENTE`, `GERENTE_GENERAL` | `200` | Pedidos pendientes de cocina de la sucursal del usuario |
 | `PATCH` | `/cocina/items/:itemId/listo` | Bearer · `COCINA`, `GERENTE` | `200` | Marca un platillo como listo (H07) |
+| `GET` | `/mesero/items-listos` | Bearer · `MESERO` | `200` | Platillos listos por entregar en las mesas de la sucursal (H08) |
+| `PATCH` | `/mesero/items/:itemId/entregado` | Bearer · `MESERO` | `200` | Marca un platillo como entregado (H08) |
 | `GET` | `/dashboard/ventas` | Bearer · `GERENTE_GENERAL` | `200` | Ventas por sucursal con ticket promedio, total general, platillos y horarios pico |
 | `GET` | `/dashboard/ventas/detalle` | Bearer · `GERENTE_GENERAL` | `200` | Ventas confirmadas, una por pedido, paginadas |
 | `GET` | `/dashboard/ventas/exportar` | Bearer · `GERENTE_GENERAL` | `200` | CSV de ventas por sucursal y total general |
@@ -499,6 +502,33 @@ curl -X PATCH $BASE/cocina/items/301/listo -H "Authorization: Bearer $ACCESS_TOK
 
 ---
 
+## Mesero: entrega de platillos (H08)
+
+### `GET /mesero/items-listos`
+
+```jsonc
+// 200 OK — del que se marcó listo primero al último
+[{ "itemId": 301, "pedidoId": 120, "mesa": 7, "platillo": "Pupusa revuelta", "cantidad": 3, "listoEn": "12:18" }]
+```
+
+- Solo ítems `LISTO` de pedidos de mesa (no para llevar ni cancelados) de la sucursal del usuario autenticado. Los entregados ya no aparecen.
+- `mesa` es el número de mesa: el front agrupa por ese campo. `listoEn` es la hora local de El Salvador en `HH:mm`.
+- Errores: `401` sin sesión; `403` si el rol no es `MESERO` o el usuario no tiene sucursal.
+
+### `PATCH /mesero/items/:itemId/entregado`
+
+```jsonc
+// 200 OK
+{ "itemId": 301, "estado": "ENTREGADO", "entregadoEn": "12:25", "pedidoEstado": "ENTREGADO" }
+```
+
+- Marca el ítem como `ENTREGADO` y guarda `entregado_en` y `entregado_por_id` (el mesero autenticado). Si todos los ítems del pedido quedan `ENTREGADO`, el pedido pasa a `ENTREGADO` (queda cerrado y la mesa se libera).
+- Al completar el pedido, después del commit, publica `pedido:entregado` (`PedidoCocinaDto`) en el namespace `/cocina`.
+- Errores: `401` sin sesión; `403` si el rol no es `MESERO`, si el usuario no tiene sucursal o si el platillo es de otra sucursal; `404` si el platillo no existe; `409` si ya fue entregado o el pedido está cancelado; `422` si todavía no está listo.
+- **Concurrencia:** igual que H07, bloquea la fila del ítem y la del pedido (`SELECT … FOR UPDATE`). Si dos meseros entregan el mismo platillo a la vez, uno recibe `200` y el otro `409`.
+
+---
+
 ## Dashboard de ventas (H28)
 
 Solo para `GERENTE_GENERAL`: el controlador usa `@Roles(Rol.GERENTE_GENERAL)` y el `RolesGuard` global responde `403` a cualquier otro rol.
@@ -643,6 +673,7 @@ Definidos en [tsconfig.json](tsconfig.json):
 | `@Health`, `@Health/*` | `src/health/…` |
 | `@Prisma`, `@Prisma/*` | `src/prisma/…` |
 | `@Cocina`, `@Cocina/*` | `src/cocina/…` |
+| `@Mesero`, `@Mesero/*` | `src/mesero/…` |
 | `@Resenas`, `@Resenas/*` | `src/resenas/…` |
 | `@Common/*` | `src/common/*/index.ts` |
 | `@Config` | `src/config/index.ts` |
@@ -726,6 +757,14 @@ nest build && tsc-alias -p tsconfig.build.json
     │   ├── constants/            # Roles, estados en cocina, namespace y rooms
     │   ├── dto/                  # PedidoCocinaDto
     │   ├── cocina.module.ts
+    │   └── index.ts
+    ├── mesero/
+    │   ├── controllers/          # GET /mesero/items-listos, PATCH /mesero/items/:itemId/entregado
+    │   ├── services/             # EntregasService
+    │   ├── repositories/         # EntregasRepository (bloqueo de fila al entregar)
+    │   ├── errors/               # ItemYaEntregadoError, ItemNoListoError, PedidoCanceladoError
+    │   ├── dto/
+    │   ├── mesero.module.ts
     │   └── index.ts
     └── generated/prisma/         # Cliente de Prisma (ignorado en git)
 ```

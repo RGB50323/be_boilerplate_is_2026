@@ -86,6 +86,11 @@ export class CocinaGateway
     this.server.to(salaSucursal(sucursalId)).emit('pedido:listo', pedido);
   }
 
+  @OnEvent(CocinaEvento.PEDIDO_ENTREGADO)
+  emitirPedidoEntregado({ sucursalId, pedido }: PedidoCocinaEvento): void {
+    this.server.to(salaSucursal(sucursalId)).emit('pedido:entregado', pedido);
+  }
+
   private async autenticar(socket: CocinaSocket): Promise<void> {
     const token: unknown = socket.handshake.auth?.token;
     if (typeof token !== 'string' || token === '') {

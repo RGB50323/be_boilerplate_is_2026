@@ -7,6 +7,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from '@Auth';
 import { JwtAuthGuard, RolesGuard } from '@Auth/guards';
 import { CocinaModule } from '@Cocina';
+import { MeseroModule } from '@Mesero';
 import { HealthModule } from '@Health';
 import { PrismaModule } from '@Prisma';
 import { ReservacionesModule } from '@Reservaciones';
@@ -41,6 +42,7 @@ import { ResenasModule } from '@Resenas';
     PagosModule,
     DashboardModule,
     CocinaModule,
+    MeseroModule,
     CategoriasModule,
     PlatillosModule,
     PedidosModule,
