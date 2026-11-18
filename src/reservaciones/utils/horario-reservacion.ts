@@ -4,6 +4,15 @@ export const DURACION_MINUTOS = 120;
 export const diaDeReserva = (fecha: string) =>
   new Date(`${fecha}T00:00:00Z`).getUTCDay();
 
+// Fecha y hora local de El Salvador (UTC-6) de un instante guardado en UTC
+export function fechaHoraLocal(instante: Date) {
+  const local = new Date(instante.getTime() - 6 * 60 * 60_000).toISOString();
+  return { fecha: local.slice(0, 10), hora: local.slice(11, 16) };
+}
+
+export const codigoReservacion = (id: number) =>
+  `R-${String(id).padStart(6, '0')}`;
+
 /** H09 y H10 comparten la duración y el horario local de El Salvador. */
 export function validarHorarioReservacion(
   fecha: string,

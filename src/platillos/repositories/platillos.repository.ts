@@ -8,12 +8,15 @@ const seleccion = (sucursalId: number) =>
     nombre: true,
     descripcion: true,
     imagenUrl: true,
-    activo: true,
     categoriaId: true,
     categoria: { select: { nombre: true } },
     sucursales: {
       where: { sucursalId },
-      select: { precio: true, disponibilidad: true },
+      select: {
+        precio: true,
+        disponibilidad: true,
+        activo: true,
+      },
     },
   }) satisfies Prisma.PlatilloSelect;
 
@@ -83,8 +86,12 @@ export class PlatillosRepository {
     take: number,
   ) {
     const where: Prisma.PlatilloWhereInput = {
-      sucursales: { some: { sucursalId } },
-      activo: soloActivos ? true : undefined,
+      sucursales: {
+        some: {
+          sucursalId,
+          activo: soloActivos ? true : undefined,
+        },
+      },
       nombre: q ? { contains: q, mode: 'insensitive' } : undefined,
     };
     const [total, platillos] = await this.prisma.$transaction([
@@ -100,16 +107,25 @@ export class PlatillosRepository {
     return { total, platillos };
   }
 
-  buscarPropio(id: number, sucursalId: number) {
-    return this.prisma.platillo.findUnique({
+  async buscarPropio(id: number, sucursalId: number) {
+    const platillo = await this.prisma.platillo.findUnique({
       where: { id },
       select: {
         id: true,
-        activo: true,
         categoriaId: true,
-        sucursales: { where: { sucursalId }, select: { id: true } },
+        sucursales: {
+          where: { sucursalId },
+          select: { id: true, activo: true },
+        },
       },
     });
+
+    if (!platillo) return null;
+
+    return {
+      ...platillo,
+      activo: platillo.sucursales[0]?.activo ?? false,
+    };
   }
 
   buscarCategoria(id: number) {
@@ -119,20 +135,40 @@ export class PlatillosRepository {
     });
   }
 
-  deshabilitar(id: number) {
-    return this.prisma.platillo.update({
-      where: { id },
+  async deshabilitar(id: number, sucursalId: number) {
+    const resultado = await this.prisma.platilloSucursal.update({
+      where: {
+        platilloId_sucursalId: {
+          platilloId: id,
+          sucursalId,
+        },
+      },
       data: { activo: false },
-      select: { id: true, activo: true },
+      select: { platilloId: true, activo: true },
     });
+
+    return {
+      id: resultado.platilloId,
+      activo: resultado.activo,
+    };
   }
 
-  habilitar(id: number) {
-    return this.prisma.platillo.update({
-      where: { id },
+  async habilitar(id: number, sucursalId: number) {
+    const resultado = await this.prisma.platilloSucursal.update({
+      where: {
+        platilloId_sucursalId: {
+          platilloId: id,
+          sucursalId,
+        },
+      },
       data: { activo: true },
-      select: { id: true, activo: true },
+      select: { platilloId: true, activo: true },
     });
+
+    return {
+      id: resultado.platilloId,
+      activo: resultado.activo,
+    };
   }
 
   buscarDetalle(id: number, sucursalId: number) {

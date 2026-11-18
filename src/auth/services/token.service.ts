@@ -68,7 +68,9 @@ export class TokenService {
    * Incluye detección de reúso: si llega un token que ya fue canjeado, se
    * asume que fue robado y se revoca la sesión completa del usuario.
    */
-  async rotate(refreshToken: string): Promise<{ user: User; tokens: TokenPair }> {
+  async rotate(
+    refreshToken: string,
+  ): Promise<{ user: User; tokens: TokenPair }> {
     const stored = await this.refreshTokenRepository.findByTokenHashWithUser(
       this.hashToken(refreshToken),
     );
@@ -92,7 +94,9 @@ export class TokenService {
       throw new UnauthorizedException('La cuenta está inactiva.');
     }
 
-    await this.refreshTokenRepository.revokeById(stored.id);
+    if (!(await this.refreshTokenRepository.consume(stored.id))) {
+      throw new UnauthorizedException('Refresh token ya utilizado.');
+    }
 
     return {
       user: stored.user,

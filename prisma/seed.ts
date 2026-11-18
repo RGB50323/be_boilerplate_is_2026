@@ -42,18 +42,92 @@ type PlatilloSeed = {
 };
 
 const PLATILLOS: PlatilloSeed[] = [
-  { nombre: 'Nachos con queso', descripcion: 'Tortilla crujiente con queso fundido', categoria: 'Entradas', centro: [6.5, 12], escalon: [6.75, 10] },
-  { nombre: 'Yuca frita', descripcion: 'Yuca dorada con chicharrón y curtido', categoria: 'Entradas', centro: [5.25, 15], escalon: [5.5, 0] },
-  { nombre: 'Alitas BBQ', descripcion: 'Seis alitas en salsa BBQ con aderezo ranch', categoria: 'Entradas', centro: [7.99, 8], escalon: [8.25, 8] },
-  { nombre: 'Hamburguesa', descripcion: 'Carne de res con queso, tocino crujiente, aros de cebolla y salsa BBQ.', categoria: 'Platillos principales', centro: [8.99, 20], escalon: [9.25, 15] },
-  { nombre: 'Pupusa revuelta', descripcion: 'Maíz con queso, frijol y chicharrón, con curtido y salsa', categoria: 'Platillos principales', centro: [1.25, 40], escalon: [1.5, 40] },
-  { nombre: 'Pollo a la plancha', descripcion: 'Pechuga con arroz, ensalada y plátano frito', categoria: 'Platillos principales', centro: [9.5, 10], escalon: [9.75, 0] },
-  { nombre: 'Costillas BBQ', descripcion: 'Media costilla en salsa BBQ con papas', categoria: 'Platillos principales', centro: [12.99, 6], escalon: [13.25, 6] },
-  { nombre: 'Limonada con soda', descripcion: 'Limón natural con soda y hielo', categoria: 'Bebidas', centro: [2.25, 50], escalon: [2.25, 50] },
-  { nombre: 'Horchata', descripcion: 'Horchata de morro con canela', categoria: 'Bebidas', centro: [2.5, 30], escalon: [2.75, 30] },
-  { nombre: 'Flan de caramelo', descripcion: 'Flan casero con caramelo', categoria: 'Postres', centro: [3.5, 10], escalon: [3.75, 10] },
-  { nombre: 'Pastel de chocolate', descripcion: 'Porción de pastel con crema', categoria: 'Postres', activo: false, centro: [4.25, 5], escalon: [4.25, 5] },
-  { nombre: 'Sopa de temporada', descripcion: 'Sopa del día (categoría deshabilitada)', categoria: 'Temporada', centro: [5.0, 5], escalon: [5.0, 5] },
+  {
+    nombre: 'Nachos con queso',
+    descripcion: 'Tortilla crujiente con queso fundido',
+    categoria: 'Entradas',
+    centro: [6.5, 12],
+    escalon: [6.75, 10],
+  },
+  {
+    nombre: 'Yuca frita',
+    descripcion: 'Yuca dorada con chicharrón y curtido',
+    categoria: 'Entradas',
+    centro: [5.25, 15],
+    escalon: [5.5, 0],
+  },
+  {
+    nombre: 'Alitas BBQ',
+    descripcion: 'Seis alitas en salsa BBQ con aderezo ranch',
+    categoria: 'Entradas',
+    centro: [7.99, 8],
+    escalon: [8.25, 8],
+  },
+  {
+    nombre: 'Hamburguesa',
+    descripcion:
+      'Carne de res con queso, tocino crujiente, aros de cebolla y salsa BBQ.',
+    categoria: 'Platillos principales',
+    centro: [8.99, 20],
+    escalon: [9.25, 15],
+  },
+  {
+    nombre: 'Pupusa revuelta',
+    descripcion: 'Maíz con queso, frijol y chicharrón, con curtido y salsa',
+    categoria: 'Platillos principales',
+    centro: [1.25, 40],
+    escalon: [1.5, 40],
+  },
+  {
+    nombre: 'Pollo a la plancha',
+    descripcion: 'Pechuga con arroz, ensalada y plátano frito',
+    categoria: 'Platillos principales',
+    centro: [9.5, 10],
+    escalon: [9.75, 0],
+  },
+  {
+    nombre: 'Costillas BBQ',
+    descripcion: 'Media costilla en salsa BBQ con papas',
+    categoria: 'Platillos principales',
+    centro: [12.99, 6],
+    escalon: [13.25, 6],
+  },
+  {
+    nombre: 'Limonada con soda',
+    descripcion: 'Limón natural con soda y hielo',
+    categoria: 'Bebidas',
+    centro: [2.25, 50],
+    escalon: [2.25, 50],
+  },
+  {
+    nombre: 'Horchata',
+    descripcion: 'Horchata de morro con canela',
+    categoria: 'Bebidas',
+    centro: [2.5, 30],
+    escalon: [2.75, 30],
+  },
+  {
+    nombre: 'Flan de caramelo',
+    descripcion: 'Flan casero con caramelo',
+    categoria: 'Postres',
+    centro: [3.5, 10],
+    escalon: [3.75, 10],
+  },
+  {
+    nombre: 'Pastel de chocolate',
+    descripcion: 'Porción de pastel con crema',
+    categoria: 'Postres',
+    activo: false,
+    centro: [4.25, 5],
+    escalon: [4.25, 5],
+  },
+  {
+    nombre: 'Sopa de temporada',
+    descripcion: 'Sopa del día (categoría deshabilitada)',
+    categoria: 'Temporada',
+    centro: [5.0, 5],
+    escalon: [5.0, 5],
+  },
 ];
 
 type UsuarioSeed = {
@@ -65,11 +139,39 @@ type UsuarioSeed = {
 };
 
 const USUARIOS: UsuarioSeed[] = [
-  { email: 'demo@example.com', nombre: 'Cliente', apellido: 'Demo', rol: 'CLIENTE' },
-  { email: 'mesero@example.com', nombre: 'Mario', apellido: 'Mesero', rol: 'MESERO', sucursal: 'Centro' },
-  { email: 'cocina@example.com', nombre: 'Carla', apellido: 'Cocina', rol: 'COCINA', sucursal: 'Centro' },
-  { email: 'gerente@example.com', nombre: 'Gabriel', apellido: 'Gerente', rol: 'GERENTE', sucursal: 'Centro' },
-  { email: 'gerente.general@example.com', nombre: 'Gina', apellido: 'General', rol: 'GERENTE_GENERAL' },
+  {
+    email: 'demo@example.com',
+    nombre: 'Cliente',
+    apellido: 'Demo',
+    rol: 'CLIENTE',
+  },
+  {
+    email: 'mesero@example.com',
+    nombre: 'Mario',
+    apellido: 'Mesero',
+    rol: 'MESERO',
+    sucursal: 'Centro',
+  },
+  {
+    email: 'cocina@example.com',
+    nombre: 'Carla',
+    apellido: 'Cocina',
+    rol: 'COCINA',
+    sucursal: 'Centro',
+  },
+  {
+    email: 'gerente@example.com',
+    nombre: 'Gabriel',
+    apellido: 'Gerente',
+    rol: 'GERENTE',
+    sucursal: 'Centro',
+  },
+  {
+    email: 'gerente.general@example.com',
+    nombre: 'Gina',
+    apellido: 'General',
+    rol: 'GERENTE_GENERAL',
+  },
 ];
 
 type ItemSeed = {
@@ -92,52 +194,266 @@ type PedidoSeed = {
 
 const PEDIDOS: PedidoSeed[] = [
   {
-    numero: 'C-0001', sucursal: 'Centro', tipo: 'MESA', mesa: 3, estado: 'EN_PREPARACION', minutosAtras: 22,
+    numero: 'C-0001',
+    sucursal: 'Centro',
+    tipo: 'MESA',
+    mesa: 3,
+    estado: 'EN_PREPARACION',
+    minutosAtras: 22,
     items: [
       { platillo: 'Hamburguesa', cantidad: 2, nota: 'Una sin cebolla' },
       { platillo: 'Limonada con soda', cantidad: 2, estado: 'LISTO' },
     ],
   },
   {
-    numero: 'C-0002', sucursal: 'Centro', tipo: 'LLEVAR', nombreCliente: 'Cliente Demo', estado: 'RECIBIDO', minutosAtras: 9,
+    numero: 'C-0002',
+    sucursal: 'Centro',
+    tipo: 'LLEVAR',
+    nombreCliente: 'Cliente Demo',
+    estado: 'RECIBIDO',
+    minutosAtras: 9,
     items: [
       { platillo: 'Pupusa revuelta', cantidad: 4, nota: 'Extra curtido' },
       { platillo: 'Horchata', cantidad: 1 },
     ],
   },
   {
-    numero: 'C-0003', sucursal: 'Centro', tipo: 'MESA', mesa: 1, estado: 'ENVIADO_COCINA', minutosAtras: 4,
+    numero: 'C-0003',
+    sucursal: 'Centro',
+    tipo: 'MESA',
+    mesa: 1,
+    estado: 'ENVIADO_COCINA',
+    minutosAtras: 4,
     items: [
       { platillo: 'Alitas BBQ', cantidad: 1 },
       { platillo: 'Nachos con queso', cantidad: 1, nota: 'Sin jalapeño' },
     ],
   },
   {
-    numero: 'C-0004', sucursal: 'Centro', tipo: 'LLEVAR', nombreCliente: 'Cliente Demo', estado: 'PENDIENTE_PAGO', minutosAtras: 2,
+    numero: 'C-0004',
+    sucursal: 'Centro',
+    tipo: 'LLEVAR',
+    nombreCliente: 'Cliente Demo',
+    estado: 'PENDIENTE_PAGO',
+    minutosAtras: 2,
     items: [{ platillo: 'Costillas BBQ', cantidad: 1 }],
   },
   {
-    numero: 'C-0005', sucursal: 'Centro', tipo: 'MESA', mesa: 5, estado: 'EN_PREPARACION', minutosAtras: 12,
+    numero: 'C-0005',
+    sucursal: 'Centro',
+    tipo: 'MESA',
+    mesa: 5,
+    estado: 'EN_PREPARACION',
+    minutosAtras: 12,
     items: [
       { platillo: 'Yuca frita', cantidad: 1, estado: 'LISTO' },
       { platillo: 'Flan de caramelo', cantidad: 2, estado: 'LISTO' },
     ],
   },
   {
-    numero: 'E-0001', sucursal: 'Escalón', tipo: 'MESA', mesa: 2, estado: 'EN_PREPARACION', minutosAtras: 18,
+    numero: 'E-0001',
+    sucursal: 'Escalón',
+    tipo: 'MESA',
+    mesa: 2,
+    estado: 'EN_PREPARACION',
+    minutosAtras: 18,
     items: [
       { platillo: 'Costillas BBQ', cantidad: 1, nota: 'Término medio' },
       { platillo: 'Horchata', cantidad: 2 },
     ],
   },
   {
-    numero: 'E-0002', sucursal: 'Escalón', tipo: 'LLEVAR', nombreCliente: 'Cliente Demo', estado: 'RECIBIDO', minutosAtras: 6,
+    numero: 'E-0002',
+    sucursal: 'Escalón',
+    tipo: 'LLEVAR',
+    nombreCliente: 'Cliente Demo',
+    estado: 'RECIBIDO',
+    minutosAtras: 6,
     items: [{ platillo: 'Hamburguesa', cantidad: 1 }],
   },
 ];
 
 function imagen(nombre: string): string {
   return `https://placehold.co/400x400?text=${encodeURIComponent(nombre)}`;
+}
+
+const DIAS_DEMO = 45;
+const DESFASE_MS = 6 * 60 * 60 * 1000; // El Salvador: UTC-06:00
+
+function generadorDemo(semilla: number) {
+  let estado = semilla;
+  return () => {
+    estado = (estado + 0x6d2b79f5) | 0;
+    let t = Math.imul(estado ^ (estado >>> 15), 1 | estado);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+// Más pedidos al almuerzo y a la cena.
+function pesoHora(hora: number): number {
+  if (hora === 12 || hora === 13) return 3;
+  if (hora === 19 || hora === 20) return 2.5;
+  if (hora === 18 || hora === 14) return 1.5;
+  return 1;
+}
+
+async function crearPedidosDemo(sucursalId: Map<string, number>) {
+  const ahora = Date.now();
+
+  for (const [nombre, sId] of sucursalId) {
+    const existentes = await prisma.pedido.count({
+      where: { sucursalId: sId, numero: { startsWith: 'DEMO-' } },
+    });
+    if (existentes > 0) {
+      console.log(
+        `Pedidos demo de ${nombre}: ya existen (${existentes}), se omiten.`,
+      );
+      continue;
+    }
+
+    const menu = await prisma.platilloSucursal.findMany({
+      where: {
+        sucursalId: sId,
+        activo: true,
+        platillo: { categoria: { activa: true } },
+      },
+      select: { platilloId: true, precio: true },
+      orderBy: { platilloId: 'asc' },
+    });
+    if (!menu.length) continue;
+
+    const azar = generadorDemo(sId * 7919);
+    let creados = 0;
+
+    for (let d = DIAS_DEMO - 1; d >= 0; d--) {
+      const diaLocal = new Date(ahora - DESFASE_MS - d * 24 * 60 * 60 * 1000);
+      const fecha = diaLocal.toISOString().slice(0, 10);
+      const horario = HORARIOS_SUCURSAL.find(
+        (h) => h.diaSemana === diaLocal.getUTCDay(),
+      );
+      if (!horario) continue;
+
+      const apertura = Number(horario.apertura.slice(0, 2));
+      const cierre = Number(horario.cierre.slice(0, 2));
+      const horas = Array.from(
+        { length: cierre - apertura },
+        (_, i) => apertura + i,
+      );
+      const pesoTotal = horas.reduce((t, h) => t + pesoHora(h), 0);
+      const finDeSemana =
+        diaLocal.getUTCDay() === 5 || diaLocal.getUTCDay() === 6;
+      const pedidosDelDia = 8 + Math.floor(azar() * 8) + (finDeSemana ? 6 : 0);
+
+      for (let i = 0; i < pedidosDelDia; i++) {
+        let x = azar() * pesoTotal;
+        const hora = horas.find((h) => (x -= pesoHora(h)) < 0) ?? horas[0];
+        const minuto = Math.floor(azar() * 60);
+        const creadoEn = new Date(
+          `${fecha}T${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')}:00-06:00`,
+        );
+        // Solo pedidos que ya ocurrieron (con margen para la confirmación del pago).
+        if (creadoEn.getTime() > ahora - 60 * 60 * 1000) continue;
+
+        const lineas = new Map<
+          number,
+          { platilloId: number; cantidad: number; precioUnitario: number }
+        >();
+        const cuantas = 1 + Math.floor(azar() * 4);
+        for (let l = 0; l < cuantas; l++) {
+          // Sesgo hacia los primeros platillos para que haya un ranking claro.
+          const item = menu[Math.floor(azar() ** 1.6 * menu.length)];
+          const previa = lineas.get(item.platilloId);
+          const cantidad = 1 + Math.floor(azar() * 3);
+          lineas.set(item.platilloId, {
+            platilloId: item.platilloId,
+            cantidad: (previa?.cantidad ?? 0) + cantidad,
+            precioUnitario: Number(item.precio),
+          });
+        }
+        const detalles = [...lineas.values()];
+        const subtotal = r2(
+          detalles.reduce((t, l) => t + l.cantidad * l.precioUnitario, 0),
+        );
+        const descuentos = azar() < 0.15 ? r2(subtotal * 0.1) : 0;
+        const neto = subtotal - descuentos;
+        const impuestos = r2(neto * 0.13);
+        const tipo = azar() < 0.7 ? 'MESA' : 'LLEVAR';
+        const propina = tipo === 'MESA' ? r2(neto * 0.1) : 0;
+        const total = r2(neto + impuestos + propina);
+
+        const sorteo = azar();
+        const estadoPago =
+          sorteo < 0.86
+            ? 'CONFIRMADO'
+            : sorteo < 0.92
+              ? 'PENDIENTE'
+              : sorteo < 0.96
+                ? 'REEMBOLSADO'
+                : 'RECHAZADO';
+        const estadoPedido =
+          estadoPago === 'CONFIRMADO'
+            ? 'ENTREGADO'
+            : estadoPago === 'REEMBOLSADO'
+              ? 'CANCELADO'
+              : 'PENDIENTE_PAGO';
+        const confirmadoEn =
+          estadoPago === 'CONFIRMADO' || estadoPago === 'REEMBOLSADO'
+            ? new Date(
+                creadoEn.getTime() + (5 + Math.floor(azar() * 35)) * 60 * 1000,
+              )
+            : null;
+
+        creados++;
+        const clave = `${sId}-${creados}`;
+        await prisma.pedido.create({
+          data: {
+            numero: `DEMO-${String(creados).padStart(5, '0')}`,
+            tipo,
+            estado: estadoPedido,
+            sucursalId: sId,
+            subtotal,
+            descuentos,
+            impuestos,
+            propina,
+            total,
+            creadoEn,
+            // Pedidos ya cerrados: sus líneas no deben aparecer como
+            // pendientes en la pantalla de cocina.
+            detalles: {
+              create: detalles.map((l) => ({
+                ...l,
+                enviadoEn: creadoEn,
+                estado:
+                  estadoPedido === 'ENTREGADO' ? 'ENTREGADO' : 'PENDIENTE',
+                listoEn: estadoPedido === 'ENTREGADO' ? creadoEn : null,
+                entregadoEn: estadoPedido === 'ENTREGADO' ? creadoEn : null,
+              })),
+            },
+            pagos: {
+              create: {
+                idempotencyKey: `demo-${clave}`,
+                transaccionId:
+                  estadoPago === 'PENDIENTE' ? null : `demo-tx-${clave}`,
+                monto: total,
+                estado: estadoPago,
+                metodo: 'TARJETA',
+                creadoEn,
+                confirmadoEn,
+                reembolsadoEn:
+                  estadoPago === 'REEMBOLSADO' && confirmadoEn
+                    ? new Date(confirmadoEn.getTime() + 30 * 60 * 1000)
+                    : null,
+              },
+            },
+          },
+        });
+      }
+    }
+    console.log(`Pedidos demo de ${nombre}: ${creados} creados.`);
+  }
 }
 
 async function main() {
@@ -166,7 +482,12 @@ async function main() {
         cierre: new Date(`1970-01-01T${horario.cierre}:00.000Z`),
       };
       await prisma.horarioSucursal.upsert({
-        where: { sucursalId_diaSemana: { sucursalId: id, diaSemana: horario.diaSemana } },
+        where: {
+          sucursalId_diaSemana: {
+            sucursalId: id,
+            diaSemana: horario.diaSemana,
+          },
+        },
         update: horas,
         create: { sucursalId: id, diaSemana: horario.diaSemana, ...horas },
       });
@@ -176,7 +497,12 @@ async function main() {
       await prisma.mesa.upsert({
         where: { sucursalId_numero: { sucursalId: id, numero } },
         update: {},
-        create: { sucursalId: id, numero, capacidad: numero <= 4 ? 4 : 2, zona: numero <= 4 ? 'Salón' : 'Terraza' },
+        create: {
+          sucursalId: id,
+          numero,
+          capacidad: numero <= 4 ? 4 : 2,
+          zona: numero <= 4 ? 'Salón' : 'Terraza',
+        },
       });
     }
   }
@@ -190,17 +516,27 @@ async function main() {
     const row = existente
       ? await prisma.categoria.update({
           where: { id: existente.id },
-          data: { activa: c.activa, deshabilitadaEn: c.activa ? null : (existente.deshabilitadaEn ?? new Date()) },
+          data: {
+            activa: c.activa,
+            deshabilitadaEn: c.activa
+              ? null
+              : (existente.deshabilitadaEn ?? new Date()),
+          },
         })
       : await prisma.categoria.create({
-          data: { nombre: c.nombre, activa: c.activa, deshabilitadaEn: c.activa ? null : new Date() },
+          data: {
+            nombre: c.nombre,
+            activa: c.activa,
+            deshabilitadaEn: c.activa ? null : new Date(),
+          },
         });
     categoriaId.set(c.nombre, row.id);
   }
 
   for (const p of PLATILLOS) {
     const catId = categoriaId.get(p.categoria);
-    if (catId === undefined) throw new Error(`Categoría inexistente: ${p.categoria}`);
+    if (catId === undefined)
+      throw new Error(`Categoría inexistente: ${p.categoria}`);
 
     const existente = await prisma.platillo.findFirst({
       where: { nombre: { equals: p.nombre, mode: 'insensitive' } },
@@ -223,11 +559,24 @@ async function main() {
     ];
     for (const [nombreSucursal, [precio, disponibilidad]] of porSucursal) {
       const sId = sucursalId.get(nombreSucursal);
-      if (sId === undefined) throw new Error(`Sucursal inexistente: ${nombreSucursal}`);
+      if (sId === undefined)
+        throw new Error(`Sucursal inexistente: ${nombreSucursal}`);
       await prisma.platilloSucursal.upsert({
-        where: { platilloId_sucursalId: { platilloId: platillo.id, sucursalId: sId } },
-        update: { precio, disponibilidad },
-        create: { platilloId: platillo.id, sucursalId: sId, precio, disponibilidad },
+        where: {
+          platilloId_sucursalId: { platilloId: platillo.id, sucursalId: sId },
+        },
+        update: {
+          precio,
+          disponibilidad,
+          activo: p.activo ?? true,
+        },
+        create: {
+          platilloId: platillo.id,
+          sucursalId: sId,
+          precio,
+          disponibilidad,
+          activo: p.activo ?? true,
+        },
       });
     }
   }
@@ -236,7 +585,12 @@ async function main() {
     const sId = u.sucursal ? sucursalId.get(u.sucursal) : undefined;
     await prisma.user.upsert({
       where: { email: u.email },
-      update: { rol: u.rol, nombre: u.nombre, apellido: u.apellido, sucursalId: sId ?? null },
+      update: {
+        rol: u.rol,
+        nombre: u.nombre,
+        apellido: u.apellido,
+        sucursalId: sId ?? null,
+      },
       create: {
         email: u.email,
         passwordHash,
@@ -248,25 +602,37 @@ async function main() {
     });
   }
 
-  const cliente = await prisma.user.findUniqueOrThrow({ where: { email: 'demo@example.com' } });
+  const cliente = await prisma.user.findUniqueOrThrow({
+    where: { email: 'demo@example.com' },
+  });
 
   for (const p of PEDIDOS) {
     const sId = sucursalId.get(p.sucursal);
-    if (sId === undefined) throw new Error(`Sucursal inexistente: ${p.sucursal}`);
+    if (sId === undefined)
+      throw new Error(`Sucursal inexistente: ${p.sucursal}`);
 
     const mesaId =
       p.mesa === undefined
         ? null
-        : (await prisma.mesa.findUniqueOrThrow({ where: { sucursalId_numero: { sucursalId: sId, numero: p.mesa } } })).id;
+        : (
+            await prisma.mesa.findUniqueOrThrow({
+              where: { sucursalId_numero: { sucursalId: sId, numero: p.mesa } },
+            })
+          ).id;
 
     const items = p.items.map((item) => {
       const platillo = PLATILLOS.find((pl) => pl.nombre === item.platillo);
       const id = platilloId.get(item.platillo);
-      if (!platillo || id === undefined) throw new Error(`Platillo inexistente: ${item.platillo}`);
-      const [precio] = p.sucursal === 'Centro' ? platillo.centro : platillo.escalon;
+      if (!platillo || id === undefined)
+        throw new Error(`Platillo inexistente: ${item.platillo}`);
+      const [precio] =
+        p.sucursal === 'Centro' ? platillo.centro : platillo.escalon;
       return { ...item, platilloId: id, precio };
     });
-    const total = items.reduce((suma, item) => suma + item.precio * item.cantidad, 0);
+    const total = items.reduce(
+      (suma, item) => suma + item.precio * item.cantidad,
+      0,
+    );
     const creadoEn = new Date(Date.now() - p.minutosAtras * 60_000);
 
     const datos = {
@@ -309,10 +675,16 @@ async function main() {
       await prisma.pago.upsert({
         where: { idempotencyKey: `seed-${p.numero}` },
         update: pago,
-        create: { ...pago, pedidoId: pedido.id, idempotencyKey: `seed-${p.numero}` },
+        create: {
+          ...pago,
+          pedidoId: pedido.id,
+          idempotencyKey: `seed-${p.numero}`,
+        },
       });
     }
   }
+
+  await crearPedidosDemo(sucursalId);
 
   console.log('Seed listo.');
   console.log(`Sucursales: ${SUCURSALES.map((s) => s.nombre).join(', ')}`);

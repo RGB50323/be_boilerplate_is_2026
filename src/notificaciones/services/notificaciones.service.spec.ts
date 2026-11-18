@@ -51,14 +51,20 @@ describe('NotificacionesService', () => {
       registradas: 1,
       omitidasPorDuplicado: 0,
     });
-    expect(repository.resolverUsuarioActivo).toHaveBeenCalledWith(USUARIO_ID);
-    expect(repository.crearMuchas).toHaveBeenCalledWith([
-      expect.objectContaining({
-        destinatarioId: USUARIO_ID,
-        titulo: 'Pedido listo',
-        estadoCorreo: null,
-      }),
-    ]);
+    expect(repository.resolverUsuarioActivo).toHaveBeenCalledWith(
+      USUARIO_ID,
+      undefined,
+    );
+    expect(repository.crearMuchas).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          destinatarioId: USUARIO_ID,
+          titulo: 'Pedido listo',
+          estadoCorreo: null,
+        }),
+      ],
+      undefined,
+    );
   });
 
   it('resuelve un grupo por rol y sucursal y registra solo los usuarios activos devueltos', async () => {
@@ -74,11 +80,18 @@ describe('NotificacionesService', () => {
       destinatario: { rol: Rol.MESERO, sucursalId: 7 },
     });
 
-    expect(repository.resolverGrupoActivo).toHaveBeenCalledWith(Rol.MESERO, 7);
-    expect(repository.crearMuchas).toHaveBeenCalledWith([
-      expect.objectContaining({ destinatarioId: USUARIO_ID }),
-      expect.objectContaining({ destinatarioId: OTRO_USUARIO_ID }),
-    ]);
+    expect(repository.resolverGrupoActivo).toHaveBeenCalledWith(
+      Rol.MESERO,
+      7,
+      undefined,
+    );
+    expect(repository.crearMuchas).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ destinatarioId: USUARIO_ID }),
+        expect.objectContaining({ destinatarioId: OTRO_USUARIO_ID }),
+      ],
+      undefined,
+    );
     expect(resultado.registradas).toBe(2);
   });
 
@@ -175,6 +188,37 @@ describe('NotificacionesService', () => {
         NOTIFICACION_ID,
         EstadoCorreo.ENVIADO,
       );
+    });
+  });
+
+  it('con transacción deja el correo PENDIENTE y lo envía solo al pedirlo tras el commit', async () => {
+    const { service, repository, enviadorCorreo } = crearContexto();
+    repository.buscarCreadasParaCorreo.mockResolvedValue([
+      {
+        id: NOTIFICACION_ID,
+        email: 'cliente@example.com',
+        titulo: 'Pedido listo',
+        mensaje: 'Tu pedido ya está listo.',
+      },
+    ]);
+    const tx = {} as never;
+
+    const resultado = await service.notificar(
+      { ...avisoBase(), enviarCorreo: true },
+      tx,
+    );
+
+    expect(resultado.correosPendientes).toHaveLength(1);
+    expect(repository.crearMuchas).toHaveBeenCalledWith(
+      [expect.objectContaining({ estadoCorreo: EstadoCorreo.PENDIENTE })],
+      tx,
+    );
+    expect(repository.buscarCreadasParaCorreo).not.toHaveBeenCalled();
+    expect(enviadorCorreo.enviar).not.toHaveBeenCalled();
+
+    service.enviarCorreosPendientes(resultado.correosPendientes ?? []);
+    await vi.waitFor(() => {
+      expect(enviadorCorreo.enviar).toHaveBeenCalledTimes(1);
     });
   });
 

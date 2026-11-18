@@ -1,11 +1,15 @@
 import {
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@PrismaClient';
 import { CategoriasRepository } from '@Categorias/repositories';
-import { CATEGORIAS_POR_PAGINA, CategoriasService } from './categorias.service.js';
+import {
+  CATEGORIAS_POR_PAGINA,
+  CategoriasService,
+} from './categorias.service.js';
 
 function errorPrisma(code: string) {
   return new Prisma.PrismaClientKnownRequestError('error', {
@@ -235,47 +239,103 @@ describe('CategoriasService', () => {
   });
 
   describe('cambiarCategoriaDePlatillo', () => {
-    it('responde 404 si el platillo no existe, sin consultar la categoría', async () => {
+    it('responde 403 si el gerente no tiene sucursal asignada', async () => {
+      const { service, repository } = crearContexto();
+
+      await expect(
+        service.cambiarCategoriaDePlatillo(5, 2, null),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(repository.buscarPlatillo).not.toHaveBeenCalled();
+      expect(repository.buscarPorId).not.toHaveBeenCalled();
+      expect(repository.asignarCategoria).not.toHaveBeenCalled();
+    });
+
+    it('responde 404 si el platillo no existe', async () => {
       const { service, repository } = crearContexto();
       repository.buscarPlatillo.mockResolvedValue(null);
 
       await expect(
-        service.cambiarCategoriaDePlatillo(999, 2),
+        service.cambiarCategoriaDePlatillo(999, 2, 1),
       ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(repository.buscarPlatillo).toHaveBeenCalledWith(999, 1);
       expect(repository.buscarPorId).not.toHaveBeenCalled();
+      expect(repository.asignarCategoria).not.toHaveBeenCalled();
+    });
+
+    it('responde 403 si el platillo no pertenece a la sucursal del gerente', async () => {
+      const { service, repository } = crearContexto();
+      repository.buscarPlatillo.mockResolvedValue({
+        id: 5,
+        sucursales: [],
+      });
+
+      await expect(
+        service.cambiarCategoriaDePlatillo(5, 2, 1),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(repository.buscarPlatillo).toHaveBeenCalledWith(5, 1);
+      expect(repository.buscarPorId).not.toHaveBeenCalled();
+      expect(repository.asignarCategoria).not.toHaveBeenCalled();
     });
 
     it('responde 404 si la categoría no existe', async () => {
       const { service, repository } = crearContexto();
-      repository.buscarPlatillo.mockResolvedValue({ id: 5 });
+      repository.buscarPlatillo.mockResolvedValue({
+        id: 5,
+        sucursales: [{ id: 10 }],
+      });
       repository.buscarPorId.mockResolvedValue(null);
 
       await expect(
-        service.cambiarCategoriaDePlatillo(5, 999),
+        service.cambiarCategoriaDePlatillo(5, 999, 1),
       ).rejects.toBeInstanceOf(NotFoundException);
-    });
 
-    it('responde 422 y no asigna si la categoría está deshabilitada', async () => {
-      const { service, repository } = crearContexto();
-      repository.buscarPlatillo.mockResolvedValue({ id: 5 });
-      repository.buscarPorId.mockResolvedValue({ id: 5, activa: false });
-
-      await expect(
-        service.cambiarCategoriaDePlatillo(5, 5),
-      ).rejects.toBeInstanceOf(UnprocessableEntityException);
       expect(repository.asignarCategoria).not.toHaveBeenCalled();
     });
 
-    it('asigna la categoría y devuelve los ids', async () => {
+    it('responde 422 si la categoría está deshabilitada', async () => {
       const { service, repository } = crearContexto();
-      repository.buscarPlatillo.mockResolvedValue({ id: 5 });
-      repository.buscarPorId.mockResolvedValue({ id: 6, activa: true });
-      repository.asignarCategoria.mockResolvedValue({ id: 5, categoriaId: 6 });
+      repository.buscarPlatillo.mockResolvedValue({
+        id: 5,
+        sucursales: [{ id: 10 }],
+      });
+      repository.buscarPorId.mockResolvedValue({
+        id: 2,
+        activa: false,
+      });
 
-      await expect(service.cambiarCategoriaDePlatillo(5, 6)).resolves.toEqual({
+      await expect(
+        service.cambiarCategoriaDePlatillo(5, 2, 1),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+      expect(repository.asignarCategoria).not.toHaveBeenCalled();
+    });
+
+    it('permite cambiar la categoría de un platillo de su sucursal', async () => {
+      const { service, repository } = crearContexto();
+      repository.buscarPlatillo.mockResolvedValue({
+        id: 5,
+        sucursales: [{ id: 10 }],
+      });
+      repository.buscarPorId.mockResolvedValue({
+        id: 6,
+        activa: true,
+      });
+      repository.asignarCategoria.mockResolvedValue({
+        id: 5,
+        categoriaId: 6,
+      });
+
+      await expect(
+        service.cambiarCategoriaDePlatillo(5, 6, 1),
+      ).resolves.toEqual({
         platilloId: 5,
         categoriaId: 6,
       });
+
+      expect(repository.buscarPlatillo).toHaveBeenCalledWith(5, 1);
       expect(repository.asignarCategoria).toHaveBeenCalledWith(5, 6);
     });
   });

@@ -36,7 +36,7 @@ function aRespuesta(platillo: PlatilloRegistro): PlatilloResponseDto {
     categoriaNombre: platillo.categoria.nombre,
     precio: enSucursal?.precio.toNumber() ?? 0,
     disponibilidad: enSucursal?.disponibilidad ?? 0,
-    activo: platillo.activo,
+    activo: enSucursal?.activo ?? false,
   };
 }
 
@@ -103,7 +103,7 @@ export class PlatillosService {
     if (!platillo.activo) {
       throw new ConflictException('El platillo ya está deshabilitado.');
     }
-    return this.repository.deshabilitar(id);
+    return this.repository.deshabilitar(id, sucursalGerente as number);
   }
 
   async habilitar(id: number, sucursalGerente: number | null) {
@@ -112,7 +112,7 @@ export class PlatillosService {
       throw new ConflictException('El platillo ya está habilitado.');
     }
     await this.verificarCategoria(platillo.categoriaId, true);
-    return this.repository.habilitar(id);
+    return this.repository.habilitar(id, sucursalGerente as number);
   }
 
     async obtener(

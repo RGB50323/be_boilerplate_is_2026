@@ -20,10 +20,10 @@ export class MenuRepository {
     return this.prisma.platilloSucursal.findMany({
       where: {
         sucursalId,
+        activo: true,
         disponibilidad: { gt: 0 },
         precio: { gte: filtros.precioMin, lte: filtros.precioMax },
         platillo: {
-          activo: true,
           categoriaId: filtros.categoriaId,
           categoria: { activa: true },
         },

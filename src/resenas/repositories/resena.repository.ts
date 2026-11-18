@@ -24,11 +24,14 @@ export class ResenaRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async platilloActivo(id: number): Promise<boolean> {
-    const platillo = await this.prisma.platillo.findUnique({
-      where: { id },
-      select: { activo: true },
+    const cantidad = await this.prisma.platillo.count({
+      where: {
+        id,
+        sucursales: { some: { activo: true } },
+      },
     });
-    return platillo?.activo === true;
+
+    return cantidad > 0;
   }
 
   // Solo cuentan las visibles
