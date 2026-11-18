@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -53,9 +54,25 @@ export class CategoriasService {
     return this.repository.deshabilitar(id);
   }
 
-  async cambiarCategoriaDePlatillo(platilloId: number, categoriaId: number) {
-    if ((await this.repository.buscarPlatillo(platilloId)) === null) {
+  async cambiarCategoriaDePlatillo(
+    platilloId: number,
+    categoriaId: number,
+    sucursalGerente: number | null,
+  ) {
+    if (sucursalGerente === null) {
+      throw new ForbiddenException('No tienes una sucursal asignada.');
+    }
+    const platillo = await this.repository.buscarPlatillo(
+      platilloId,
+      sucursalGerente,
+    );
+    if (platillo === null) {
       throw new NotFoundException('El platillo no existe.');
+    }
+    if (platillo.sucursales.length === 0) {
+      throw new ForbiddenException(
+        'No tienes permiso para gestionar este platillo.',
+      );
     }
     const categoria = await this.repository.buscarPorId(categoriaId);
     if (categoria === null) {
