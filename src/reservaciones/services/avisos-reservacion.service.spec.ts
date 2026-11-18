@@ -81,7 +81,7 @@ describe('AvisosReservacionService', () => {
     );
   });
 
-  it('el recordatorio usa una sola referencia por reservación', async () => {
+  it('el recordatorio usa una referencia por horario reservado', async () => {
     const { service, notificaciones } = crearContexto();
 
     await service.recordatorio(12);
@@ -89,9 +89,26 @@ describe('AvisosReservacionService', () => {
     expect(notificaciones.notificar).toHaveBeenCalledWith(
       expect.objectContaining({
         titulo: 'Recordatorio de tu reservación',
-        referencia: { tipo: 'RESERVA_RECORDATORIO', id: 'R-000012' },
+        referencia: {
+          tipo: 'RESERVA_RECORDATORIO',
+          id: `R-000012:${new Date('2026-11-20T20:00:00Z').getTime()}`,
+        },
       }),
     );
+  });
+
+  it('si H11 cambia la hora, el nuevo recordatorio no se toma como duplicado', async () => {
+    const { service, repository, notificaciones } = crearContexto();
+    await service.recordatorio(12);
+    repository.buscarParaAviso.mockResolvedValue(
+      reservacion({ inicio: new Date('2026-11-21T01:00:00Z') }),
+    );
+    await service.recordatorio(12);
+
+    const ids = notificaciones.notificar.mock.calls.map(
+      ([aviso]) => (aviso as { referencia: { id: string } }).referencia.id,
+    );
+    expect(new Set(ids).size).toBe(2);
   });
 
   it('no avisa si la reservación no existe', async () => {

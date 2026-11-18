@@ -69,11 +69,14 @@ export class AvisosReservacionService {
         recordatorio: `Te recordamos tu reservación ${codigo}: ${detalle}`,
       };
 
-      // Cada modificación es un aviso distinto; el resto se envía una sola vez
+      // Un aviso por modificación y un recordatorio por horario (H11 lo reprograma)
+      const sufijos: Partial<Record<TipoAviso, number>> = {
+        modificada: (reservacion.modificadaEn ?? new Date()).getTime(),
+        recordatorio: reservacion.inicio.getTime(),
+      };
+      const sufijo = sufijos[tipo];
       const referenciaId =
-        tipo === 'modificada'
-          ? `${codigo}:${(reservacion.modificadaEn ?? new Date()).getTime()}`
-          : codigo;
+        sufijo === undefined ? codigo : `${codigo}:${sufijo}`;
 
       await this.notificaciones.notificar({
         destinatario: { usuarioId: reservacion.clienteId },
