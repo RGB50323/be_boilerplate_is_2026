@@ -22,6 +22,7 @@ function crearContexto(datos: unknown = reservacion()) {
     notificar: vi
       .fn()
       .mockResolvedValue({ registradas: 1, omitidasPorDuplicado: 0 }),
+    enviarCorreosPendientes: vi.fn(),
   };
   const service = new AvisosReservacionService(
     repository as unknown as ReservacionRepository,
@@ -131,5 +132,51 @@ describe('AvisosReservacionService', () => {
 
     await expect(service.creada(12)).resolves.toBe(false);
     await expect(service.recordatorio(12)).resolves.toBe(false);
+  });
+
+  it('H11: registra la modificación en su transacción y devuelve los correos', async () => {
+    const { service, repository, notificaciones } = crearContexto();
+    notificaciones.notificar.mockResolvedValue({
+      registradas: 1,
+      omitidasPorDuplicado: 0,
+      correosPendientes: ['n-1'],
+    });
+    const tx = {} as never;
+    const modificadaEn = new Date('2026-11-18T10:00:00Z');
+
+    await expect(
+      service.registrarModificada(reservacion({ modificadaEn }), tx),
+    ).resolves.toEqual(['n-1']);
+    expect(repository.buscarParaAviso).not.toHaveBeenCalled();
+    expect(notificaciones.notificar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        titulo: 'Reservación modificada',
+        enviarCorreo: true,
+        referencia: {
+          tipo: 'RESERVA_MODIFICADA',
+          id: `R-000012:${modificadaEn.getTime()}`,
+        },
+      }),
+      tx,
+    );
+  });
+
+  it('H11: si el aviso falla en la transacción, lanza para revertir', async () => {
+    const { service, notificaciones } = crearContexto();
+    notificaciones.notificar.mockRejectedValue(new Error('caído'));
+
+    await expect(
+      service.registrarModificada(reservacion(), {} as never),
+    ).rejects.toThrow('caído');
+  });
+
+  it('envía los correos pendientes después del commit', () => {
+    const { service, notificaciones } = crearContexto();
+
+    service.enviarCorreos(['n-1']);
+
+    expect(notificaciones.enviarCorreosPendientes).toHaveBeenCalledWith([
+      'n-1',
+    ]);
   });
 });

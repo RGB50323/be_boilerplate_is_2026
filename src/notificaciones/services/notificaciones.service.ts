@@ -45,10 +45,6 @@ export class NotificacionesService {
     aviso: Aviso,
     tx?: Prisma.TransactionClient,
   ): Promise<ResultadoNotificacion> {
-    // Una transacción solo registra avisos internos: nunca envía correos antes del commit.
-    if (tx && aviso.enviarCorreo) {
-      throw new Error('El envío de correo no admite una transacción externa.');
-    }
     const avisoValidado = this.validarAviso(aviso);
     const destinatarios = await this.resolverDestinatarios(avisoValidado, tx);
 
@@ -73,6 +69,14 @@ export class NotificacionesService {
       tx,
     );
 
+    // Con transacción el correo queda PENDIENTE: nunca se envía antes del commit
+    if (avisoValidado.enviarCorreo && registradas > 0 && tx) {
+      return {
+        registradas,
+        omitidasPorDuplicado: destinatarios.length - registradas,
+        correosPendientes: ids,
+      };
+    }
     if (avisoValidado.enviarCorreo && registradas > 0) {
       // Correo en segundo plano
       void this.procesarCorreos(ids);
@@ -82,6 +86,11 @@ export class NotificacionesService {
       registradas,
       omitidasPorDuplicado: destinatarios.length - registradas,
     };
+  }
+
+  // Envía los correos de avisos registrados en una transacción ya confirmada
+  enviarCorreosPendientes(ids: string[]): void {
+    if (ids.length > 0) void this.procesarCorreos(ids);
   }
 
   async listar(

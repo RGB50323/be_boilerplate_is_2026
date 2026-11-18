@@ -1,11 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ModuloOrigen } from '@PrismaClient';
+import { ModuloOrigen, type Prisma } from '@PrismaClient';
+import type { Aviso } from '@Notificaciones/types';
 import { NotificacionesService } from '@Notificaciones/services';
 import { ReservacionRepository } from '../repositories/reservacion.repository.js';
 import {
   codigoReservacion,
   fechaHoraLocal,
 } from '../utils/horario-reservacion.js';
+
+// Datos mínimos de la reservación para armar un aviso
+type DatosAviso = {
+  id: number;
+  clienteId: string;
+  personas: number;
+  inicio: Date;
+  modificadaEn: Date | null;
+  mesa: { numero: number; sucursal: { nombre: string } };
+};
 
 type TipoAviso = 'confirmada' | 'modificada' | 'cancelada' | 'recordatorio';
 
@@ -49,6 +60,22 @@ export class AvisosReservacionService {
     return this.avisar(reservacionId, 'recordatorio');
   }
 
+  // H11: aviso dentro de su transacción; los correos se envían tras el commit
+  async registrarModificada(
+    reservacion: DatosAviso,
+    tx: Prisma.TransactionClient,
+  ): Promise<string[]> {
+    const { correosPendientes } = await this.notificaciones.notificar(
+      this.armarAviso(reservacion, 'modificada'),
+      tx,
+    );
+    return correosPendientes ?? [];
+  }
+
+  enviarCorreos(ids: string[]): void {
+    this.notificaciones.enviarCorreosPendientes(ids);
+  }
+
   // No lanza; devuelve false si el aviso no quedó registrado
   private async avisar(
     reservacionId: number,
@@ -57,35 +84,7 @@ export class AvisosReservacionService {
     try {
       const reservacion = await this.repository.buscarParaAviso(reservacionId);
       if (reservacion === null) return true;
-
-      const codigo = codigoReservacion(reservacion.id);
-      const { fecha, hora } = fechaHoraLocal(reservacion.inicio);
-      const sucursal = reservacion.mesa.sucursal.nombre;
-      const detalle = `${fecha} a las ${hora}, ${reservacion.personas} personas, sucursal ${sucursal}, mesa ${reservacion.mesa.numero}.`;
-      const mensajes: Record<TipoAviso, string> = {
-        confirmada: `Tu reservación ${codigo} quedó confirmada: ${detalle}`,
-        modificada: `Tu reservación ${codigo} cambió. Nuevos datos: ${detalle}`,
-        cancelada: `Tu reservación ${codigo} fue cancelada: ${detalle}`,
-        recordatorio: `Te recordamos tu reservación ${codigo}: ${detalle}`,
-      };
-
-      // Un aviso por modificación y un recordatorio por horario (H11 lo reprograma)
-      const sufijos: Partial<Record<TipoAviso, number>> = {
-        modificada: (reservacion.modificadaEn ?? new Date()).getTime(),
-        recordatorio: reservacion.inicio.getTime(),
-      };
-      const sufijo = sufijos[tipo];
-      const referenciaId =
-        sufijo === undefined ? codigo : `${codigo}:${sufijo}`;
-
-      await this.notificaciones.notificar({
-        destinatario: { usuarioId: reservacion.clienteId },
-        titulo: TITULOS[tipo],
-        mensaje: mensajes[tipo],
-        moduloOrigen: ModuloOrigen.RESERVACIONES,
-        referencia: { tipo: REFERENCIAS[tipo], id: referenciaId },
-        enviarCorreo: true,
-      });
+      await this.notificaciones.notificar(this.armarAviso(reservacion, tipo));
       return true;
     } catch (error) {
       this.logger.error(
@@ -94,5 +93,35 @@ export class AvisosReservacionService {
       );
       return false;
     }
+  }
+
+  private armarAviso(reservacion: DatosAviso, tipo: TipoAviso): Aviso {
+    const codigo = codigoReservacion(reservacion.id);
+    const { fecha, hora } = fechaHoraLocal(reservacion.inicio);
+    const sucursal = reservacion.mesa.sucursal.nombre;
+    const detalle = `${fecha} a las ${hora}, ${reservacion.personas} personas, sucursal ${sucursal}, mesa ${reservacion.mesa.numero}.`;
+    const mensajes: Record<TipoAviso, string> = {
+      confirmada: `Tu reservación ${codigo} quedó confirmada: ${detalle}`,
+      modificada: `Tu reservación ${codigo} cambió. Nuevos datos: ${detalle}`,
+      cancelada: `Tu reservación ${codigo} fue cancelada: ${detalle}`,
+      recordatorio: `Te recordamos tu reservación ${codigo}: ${detalle}`,
+    };
+
+    // Un aviso por modificación y un recordatorio por horario (H11 lo reprograma)
+    const sufijos: Partial<Record<TipoAviso, number>> = {
+      modificada: (reservacion.modificadaEn ?? new Date()).getTime(),
+      recordatorio: reservacion.inicio.getTime(),
+    };
+    const sufijo = sufijos[tipo];
+    const referenciaId = sufijo === undefined ? codigo : `${codigo}:${sufijo}`;
+
+    return {
+      destinatario: { usuarioId: reservacion.clienteId },
+      titulo: TITULOS[tipo],
+      mensaje: mensajes[tipo],
+      moduloOrigen: ModuloOrigen.RESERVACIONES,
+      referencia: { tipo: REFERENCIAS[tipo], id: referenciaId },
+      enviarCorreo: true,
+    };
   }
 }
