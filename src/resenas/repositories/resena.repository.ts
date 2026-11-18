@@ -1,6 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
-import { EstadoResena } from '@PrismaClient';
+import { EstadoPago, EstadoResena } from '@PrismaClient';
+
+export type NuevaResena = {
+  pedidoId: number;
+  platilloId: number;
+  clienteId: string;
+  estrellas: number;
+  comentario: string | null;
+};
+
+// Pago confirmado desde la fecha dada (sin confirmadoEn se usa creadoEn)
+const pagoConfirmadoDesde = (desde: Date) => ({
+  estado: EstadoPago.CONFIRMADO,
+  OR: [
+    { confirmadoEn: { gte: desde } },
+    { confirmadoEn: null, creadoEn: { gte: desde } },
+  ],
+});
 
 @Injectable()
 export class ResenaRepository {
@@ -31,6 +48,61 @@ export class ResenaRepository {
       by: ['estrellas'],
       where: { platilloId, estado: EstadoResena.VISIBLE },
       _count: { _all: true },
+    });
+  }
+
+  // Dueño, si el platillo está en el pedido y su último pago confirmado
+  buscarPedidoParaResena(pedidoId: number, platilloId: number) {
+    return this.prisma.pedido.findUnique({
+      where: { id: pedidoId },
+      select: {
+        clienteId: true,
+        detalles: { where: { platilloId }, select: { id: true }, take: 1 },
+        pagos: {
+          where: { estado: EstadoPago.CONFIRMADO },
+          orderBy: { id: 'desc' },
+          take: 1,
+          select: { confirmadoEn: true, creadoEn: true },
+        },
+      },
+    });
+  }
+
+  crear(datos: NuevaResena) {
+    return this.prisma.resena.create({
+      data: datos,
+      select: {
+        id: true,
+        pedidoId: true,
+        platilloId: true,
+        estrellas: true,
+        comentario: true,
+        creadaEn: true,
+      },
+    });
+  }
+
+  // Pedidos del cliente pagados dentro del plazo, con lo ya reseñado
+  pedidosPorResenar(clienteId: string, desde: Date) {
+    return this.prisma.pedido.findMany({
+      where: { clienteId, pagos: { some: pagoConfirmadoDesde(desde) } },
+      orderBy: { id: 'desc' },
+      select: {
+        id: true,
+        numero: true,
+        sucursal: { select: { nombre: true } },
+        detalles: {
+          orderBy: { id: 'asc' },
+          select: { platilloId: true, platillo: { select: { nombre: true } } },
+        },
+        resenas: { select: { platilloId: true } },
+        pagos: {
+          where: { estado: EstadoPago.CONFIRMADO },
+          orderBy: { id: 'desc' },
+          take: 1,
+          select: { confirmadoEn: true, creadoEn: true },
+        },
+      },
     });
   }
 
