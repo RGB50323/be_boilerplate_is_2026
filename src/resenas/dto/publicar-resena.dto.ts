@@ -20,11 +20,14 @@ export class PublicarResenaDto {
   @ApiProperty({ example: 121 })
   @IsInt({ message: 'El pedido es obligatorio.' })
   @Min(1, { message: 'El pedido es obligatorio.' })
+  // Tope de INTEGER en PostgreSQL: más grande daría un 500
+  @Max(2147483647, { message: 'El pedido no es válido.' })
   pedidoId!: number;
 
   @ApiProperty({ example: 10 })
   @IsInt({ message: 'El platillo es obligatorio.' })
   @Min(1, { message: 'El platillo es obligatorio.' })
+  @Max(2147483647, { message: 'El platillo no es válido.' })
   platilloId!: number;
 
   @ApiProperty({ example: 5, minimum: 1, maximum: 5 })

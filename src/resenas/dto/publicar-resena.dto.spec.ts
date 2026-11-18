@@ -59,4 +59,24 @@ describe('PublicarResenaDto', () => {
       ]),
     );
   });
+
+  it('rechaza ids fuera del rango de INTEGER (evita un 500)', async () => {
+    const { mensajes } = await errores({
+      ...valido,
+      pedidoId: 2147483648,
+      platilloId: 2147483648,
+    });
+    expect(mensajes).toEqual(
+      expect.arrayContaining([
+        'El pedido no es válido.',
+        'El platillo no es válido.',
+      ]),
+    );
+    const limite = await errores({
+      ...valido,
+      pedidoId: 2147483647,
+      platilloId: 2147483647,
+    });
+    expect(limite.mensajes).toEqual([]);
+  });
 });
