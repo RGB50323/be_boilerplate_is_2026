@@ -327,6 +327,10 @@ Base: `http://localhost:3000/api/v1` · Documentación interactiva: `http://loca
 | `PATCH` | `/cocina/items/:itemId/listo` | Bearer · `COCINA`, `GERENTE` | `200` | Marca un platillo como listo (H07) |
 | `GET` | `/mesero/items-listos` | Bearer · `MESERO` | `200` | Platillos listos por entregar en las mesas de la sucursal (H08) |
 | `PATCH` | `/mesero/items/:itemId/entregado` | Bearer · `MESERO` | `200` | Marca un platillo como entregado (H08) |
+| `GET` | `/inventario/insumos` | Bearer · `GERENTE` | `200` | Insumos de la sucursal del gerente, con búsqueda y estado (H14) |
+| `POST` | `/inventario/insumos` | Bearer · `GERENTE` | `201` | Registra un insumo con cantidad inicial 0 (H14) |
+| `POST` | `/inventario/insumos/:id/movimientos` | Bearer · `GERENTE` | `201` | Registra una entrada o salida del insumo (H14) |
+| `GET` | `/inventario/insumos/:id/movimientos` | Bearer · `GERENTE` | `200` | Historial paginado de movimientos del insumo (H14) |
 | `GET` | `/dashboard/ventas` | Bearer · `GERENTE_GENERAL` | `200` | Ventas por sucursal con ticket promedio, total general, platillos y horarios pico |
 | `GET` | `/dashboard/ventas/detalle` | Bearer · `GERENTE_GENERAL` | `200` | Ventas confirmadas, una por pedido, paginadas |
 | `GET` | `/dashboard/ventas/exportar` | Bearer · `GERENTE_GENERAL` | `200` | CSV de ventas por sucursal y total general |
@@ -529,6 +533,62 @@ curl -X PATCH $BASE/cocina/items/301/listo -H "Authorization: Bearer $ACCESS_TOK
 
 ---
 
+## Inventario de insumos (H14)
+
+Solo para `GERENTE`. La sucursal siempre sale del usuario autenticado, nunca de un parámetro: si el body trae `sucursalId`, la validación responde `400`.
+
+### `GET /inventario/insumos?q=queso`
+
+```jsonc
+// 200 OK — ordenados por nombre
+[{ "id": 5, "nombre": "Queso con loroco", "unidad": "lb", "cantidad": 12.5, "minimo": 10, "estado": "NORMAL" }]
+```
+
+- `q` filtra por parte del nombre sin distinguir mayúsculas.
+- `estado` se calcula, no se guarda: `BAJO` si `cantidad <= minimo`, si no `NORMAL`.
+- Errores: `401` sin sesión; `403` si el rol no es `GERENTE` o el usuario no tiene sucursal.
+
+### `POST /inventario/insumos`
+
+```jsonc
+// Body
+{ "nombre": "Masa de maíz", "unidad": "lb", "minimo": 20 }
+// 201 Created
+{ "id": 9, "nombre": "Masa de maíz", "unidad": "lb", "cantidad": 0, "minimo": 20, "estado": "BAJO" }
+```
+
+- Unidades permitidas: `lb`, `kg`, `l`, `unidad`. Se guardan en el enum `unidad_insumo`.
+- Errores: `400` nombre o unidad vacíos, unidad no permitida o mínimo negativo; `401`; `403`; `409` si ya existe un insumo con ese nombre en la sucursal (sin distinguir mayúsculas, índice `insumo_sucursal_nombre_ci`).
+
+### `POST /inventario/insumos/:id/movimientos`
+
+```jsonc
+// Body
+{ "tipo": "SALIDA", "cantidad": 3, "motivo": "Uso en cocina" }
+// 201 Created
+{ "movimientoId": 88, "cantidadAnterior": 12.5, "cantidadActual": 9.5 }
+```
+
+- Guarda el movimiento (usuario, fecha y hora, motivo, cantidad anterior y actual) y la nueva cantidad del insumo en una sola transacción.
+- Después del commit llama a `EvaluadorAlertasInventario.evaluar(insumoId)`. Por ahora no hace nada: la evaluación de alertas llega con H15 (BE-15.1).
+- Errores: `400` cantidad menor o igual a 0, tipo inválido o motivo vacío; `401`; `403` si el rol no es `GERENTE` o el insumo es de otra sucursal; `404` si el insumo no existe; `422` si la salida supera la existencia (la cantidad no cambia) o si la entrada supera el máximo de `DECIMAL(12, 3)`.
+- **Concurrencia:** la transacción bloquea la fila del insumo (`SELECT … FOR UPDATE`) antes de leer la cantidad. Si dos salidas simultáneas juntas superan la existencia, una recibe `201` y la otra `422`.
+
+### `GET /inventario/insumos/:id/movimientos?pagina=1`
+
+```jsonc
+// 200 OK — 10 por página, del más reciente al más antiguo
+{
+  "pagina": 1, "totalPaginas": 3, "total": 23,
+  "datos": [{ "id": 88, "fecha": "2026-11-17", "hora": "14:05", "usuario": "Ana López", "tipo": "SALIDA", "cantidad": 3, "motivo": "Uso en cocina" }]
+}
+```
+
+- `fecha` y `hora` en hora local de El Salvador. `usuario` es el nombre de quien registró el movimiento (su email si no tiene nombre).
+- Errores: `400` página inválida; `401`; `403` si el rol no es `GERENTE` o el insumo es de otra sucursal; `404` si el insumo no existe.
+
+---
+
 ## Dashboard de ventas (H28)
 
 Solo para `GERENTE_GENERAL`: el controlador usa `@Roles(Rol.GERENTE_GENERAL)` y el `RolesGuard` global responde `403` a cualquier otro rol.
@@ -674,6 +734,7 @@ Definidos en [tsconfig.json](tsconfig.json):
 | `@Prisma`, `@Prisma/*` | `src/prisma/…` |
 | `@Cocina`, `@Cocina/*` | `src/cocina/…` |
 | `@Mesero`, `@Mesero/*` | `src/mesero/…` |
+| `@Inventario`, `@Inventario/*` | `src/inventario/…` |
 | `@Resenas`, `@Resenas/*` | `src/resenas/…` |
 | `@Common/*` | `src/common/*/index.ts` |
 | `@Config` | `src/config/index.ts` |
@@ -765,6 +826,15 @@ nest build && tsc-alias -p tsconfig.build.json
     │   ├── errors/               # ItemYaEntregadoError, ItemNoListoError, PedidoCanceladoError
     │   ├── dto/
     │   ├── mesero.module.ts
+    │   └── index.ts
+    ├── inventario/
+    │   ├── controllers/          # GET/POST /inventario/insumos, entradas, salidas e historial
+    │   ├── services/             # InventarioService y EvaluadorAlertasInventario (pendiente H15)
+    │   ├── repositories/         # InsumosRepository (bloqueo de fila al mover existencias)
+    │   ├── errors/               # InsumoDuplicadoError, ExistenciaInsuficienteError, …
+    │   ├── utils/                # Unidades, estado BAJO/NORMAL y límites
+    │   ├── dto/
+    │   ├── inventario.module.ts
     │   └── index.ts
     └── generated/prisma/         # Cliente de Prisma (ignorado en git)
 ```
