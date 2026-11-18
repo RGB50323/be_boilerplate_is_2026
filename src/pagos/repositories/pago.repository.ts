@@ -94,6 +94,8 @@ export class PagoRepository {
 
   // Actualizar el estado solamente si conserva
   // el estado que se verificó anteriormente
+  // Una sola transacción PostgreSQL vincula la confirmación con la emisión.
+  // Si falta el ticket validado o H17 falla, se revierte el cambio de estado.
   confirmarYEmitirComprobante(transaccionId: string, estadoActual: EstadoPago) {
     return this.prisma.$transaction(async (tx) => {
       const resultado = await tx.pago.updateMany({

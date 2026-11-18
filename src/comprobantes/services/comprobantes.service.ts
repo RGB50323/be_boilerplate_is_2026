@@ -20,6 +20,7 @@ export class ComprobantesService {
     private readonly comprobantesRepository: ComprobantesRepository,
   ) {}
 
+  // La consulta de metadatos deja intacta la marca de primera generación.
   async consultar(id: number, usuario: User) {
     const { primeraGeneracionPdfEn, ...resultado } =
       await this.buscarAutorizado(id, usuario);
@@ -70,7 +71,8 @@ export class ComprobantesService {
 
     if (comprobante.primeraGeneracionPdfEn === null) {
       const original = await this.pdfGenerator.generar(datosPdf, 'ORIGINAL');
-      // La marca registra el Buffer listo en el servidor. El envío HTTP ocurre después.
+      // Registrar solo después de construir el Buffer permite reintentar si falla.
+      // El servidor guarda la marca antes del envío HTTP, cuya recepción no confirma.
       const { count } =
         await this.comprobantesRepository.reclamarPrimeraGeneracionPdf(id);
       if (count === 1) return { buffer: original, nombreArchivo };
@@ -89,7 +91,8 @@ export class ComprobantesService {
       ticketSnapshot: Prisma.InputJsonValue;
     },
   ) {
-    // Los índices únicos rechazan colisiones con comprobantes históricos.
+    // H17 conserva su propia copia histórica del ticket validado por H16.
+    // Las restricciones únicas protegen el número y el original por transacción.
     return this.comprobantesRepository.crear(tx, {
       numero: `CP-${pago.id}`,
       ticketId: pago.pedidoId,

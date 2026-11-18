@@ -448,6 +448,8 @@ model Pago {
   idempotencyKey String     @unique @map("idempotency_key") @db.VarChar(64)
   transaccionId  String?    @unique @map("transaccion_id") @db.VarChar(80)
   monto          Decimal    @db.Decimal(10, 2)
+  // Conserva el ticket validado al iniciar el pago. Es nullable para los pagos
+  // históricos, que no pueden confirmarse si carecen de ese ticket.
   ticketSnapshot Json?      @map("ticket_snapshot") @db.JsonB
   estado         EstadoPago @default(PENDIENTE)
   metodo         String?    @db.VarChar(30)
@@ -472,7 +474,11 @@ model Comprobante {
   transaccionId String   @unique @map("transaccion_id") @db.VarChar(80)
   fechaEmision  DateTime @default(now()) @map("fecha_emision")
   archivoUrl    String?  @map("archivo_url") @db.VarChar(255)
+  // Copia histórica independiente del ticket para generar documentos.
+  // Los comprobantes anteriores pueden tener NULL y solo permiten consultar metadatos.
   contenidoSnapshot Json? @map("contenido_snapshot") @db.JsonB
+  // NULL indica que el ORIGINAL está disponible. En comprobantes históricos,
+  // la fecha de corte reserva las descargas como COPIA.
   primeraGeneracionPdfEn DateTime? @map("primera_generacion_pdf_en")
 
   pedido Pedido @relation(fields: [ticketId], references: [id])

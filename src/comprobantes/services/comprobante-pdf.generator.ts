@@ -4,6 +4,8 @@ import type { SnapshotPdf } from './comprobante-pdf.snapshot.js';
 
 @Injectable()
 export class ComprobantePdfGenerator {
+  // Genera el PDF bajo demanda en memoria con el desglose histórico. El tipo
+  // de representación solo cambia el encabezado y conserva número e importes.
   generar(
     comprobante: {
       numero: string;

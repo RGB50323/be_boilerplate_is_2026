@@ -88,7 +88,8 @@ export class PagosService {
       throw new BadGatewayException('Respuesta inválida del simulador');
     }
 
-    // 8. Registrar el pago
+    // 8. Registrar el pago PENDIENTE junto con su ticket validado para que H17
+    // pueda emitir luego a partir de los datos aceptados al iniciar el pago.
     try {
       const pago = await this.pagoRepository.crear({
         pedidoId: ticket.id,
@@ -257,7 +258,8 @@ export class PagosService {
       );
     }
 
-    // Integración con H05 para pedidos para llevar
+    // H05 consulta el pago confirmado desde su propia transacción. Se invoca
+    // después de que PostgreSQL guarda la confirmación y el comprobante.
     if (
       estadoNuevo === EstadoTransaccionSimulada.CONFIRMADO &&
       pago.pedido.tipo === TipoPedido.LLEVAR

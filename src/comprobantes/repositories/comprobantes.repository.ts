@@ -30,6 +30,8 @@ export class ComprobantesRepository {
     });
   }
 
+  // PostgreSQL comprueba y actualiza la marca en una sola operación.
+  // La solicitud que actualiza la fila entrega el ORIGINAL. Las demás dan COPIA.
   reclamarPrimeraGeneracionPdf(id: number) {
     return this.prisma.comprobante.updateMany({
       where: { id, primeraGeneracionPdfEn: null },
