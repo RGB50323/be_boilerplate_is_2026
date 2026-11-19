@@ -9,6 +9,7 @@ API REST construida con **NestJS 12**, **Prisma 7** y **PostgreSQL 18**, con aut
 - [Stack técnico](#stack-técnico)
 - [Requisitos previos](#requisitos-previos)
 - [Variables de entorno](#variables-de-entorno)
+- [Base de datos compartida (Supabase)](#base-de-datos-compartida-supabase)
 - [Cómo levantar el proyecto](#cómo-levantar-el-proyecto)
   - [Opción A: todo con Docker](#opción-a-todo-con-docker)
   - [Opción B: Postgres en Docker + API en el host](#opción-b-postgres-en-docker--api-en-el-host-recomendado-para-desarrollar)
@@ -82,7 +83,9 @@ cp .env.example .env
 | `POSTGRES_PASSWORD` | `postgres` | Contraseña de ese usuario |
 | `POSTGRES_DB` | `si_be_boilerplate` | Base que se crea al inicializar |
 | `POSTGRES_PORT` | `5432` | Puerto publicado en el host |
-| `DATABASE_URL` | — | **Obligatoria.** Connection string de Prisma |
+| `DATABASE_URL` | — | **Obligatoria.** Connection string que usa la API y el seed. Con Supabase: transaction pooler (puerto 6543) con `?sslmode=no-verify` |
+| `DIRECT_URL` | — | Connection string que usa el CLI de Prisma. Con Supabase: session pooler (puerto 5432). Si no existe, el CLI usa `DATABASE_URL` |
+| `LOCAL_DATABASE_URL` | — | Postgres local de Docker. Lo usan `prisma:migrate`, `db:reset` y `test:e2e`, que borran datos. Nunca apunta a Supabase |
 | `JWT_SECRET` | — | **Obligatoria.** Mínimo 32 caracteres |
 | `JWT_EXPIRES_IN` | `15m` | Vigencia del access token |
 | `REFRESH_TOKEN_EXPIRES_IN_DAYS` | `7` | Vigencia del refresh token |
@@ -98,6 +101,37 @@ openssl rand -base64 32
 ```
 
 > **Ojo con el host de la base.** Si corrés la API en tu máquina, `DATABASE_URL` apunta a `localhost`. Si la corrés dentro de Compose, el host es el nombre del servicio (`postgres`); eso ya lo resuelve `docker-compose.yml` sobreescribiendo la variable.
+
+---
+
+## Base de datos compartida (Supabase)
+
+El equipo trabaja sobre **una sola base PostgreSQL en Supabase** (H35). Prisma sigue siendo el ORM y el dueño de las migraciones; de Supabase solo usamos la base (no Auth, Storage ni la Data API, que está deshabilitada).
+
+### Conectarte
+
+1. Pedí la contraseña de la base a quien administra el proyecto de Supabase. **No va en el repo ni en chats públicos.**
+2. En Supabase, entrá a **Connect** y copiá las dos cadenas del pooler a tu `.env` (ver [.env.example](.env.example)):
+   - `DATABASE_URL`: *Transaction pooler* (puerto **6543**) + `?sslmode=no-verify`.
+   - `DIRECT_URL`: *Session pooler* (puerto **5432**).
+3. `npm ci` y `npm start`. No hace falta migrar ni correr el seed: la base ya está al día.
+
+### Reglas para no romperle la base a nadie
+
+- **Todo lo que borra datos va a la base local de Docker, nunca a Supabase.** [prisma.config.ts](prisma.config.ts) manda `migrate dev`, `migrate reset` y `db push` a `LOCAL_DATABASE_URL`, y se niega a correr si esa variable apunta a Supabase. Las pruebas e2e hacen lo mismo ([vitest.config.e2e.ts](vitest.config.e2e.ts)).
+- **Las migraciones se aplican a Supabase solo desde `development`**, después de mergear el PR que las trae, con `npm run prisma:deploy`. Lo hace quien mergea y avisa al equipo.
+- **Después de cada merge con migraciones**, todos hacen `git pull` y `npx prisma generate` para que su cliente de Prisma conozca las columnas nuevas.
+- **El seed es idempotente**, pero se corre solo cuando cambia (`npm run db:seed`) y avisando: modifica datos que otros están usando.
+- **Los datos de prueba son de todos.** Si necesitás un escenario raro (borrar, dejar estados inconsistentes), hacelo en la base local.
+
+### Cambiar el schema (nueva migración)
+
+```bash
+docker compose up -d postgres            # base local de pruebas
+npm run prisma:migrate -- --name mi_cambio   # crea la migración contra LOCAL_DATABASE_URL
+```
+
+Para probar tu rama con la columna nueva antes del merge, apuntá temporalmente `DATABASE_URL` a la base local (y comentá `DIRECT_URL`). Supabase recibe la migración recién cuando el PR entra a `development`.
 
 ---
 
