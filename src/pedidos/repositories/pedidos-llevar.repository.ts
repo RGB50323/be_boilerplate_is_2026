@@ -182,7 +182,7 @@ export class PedidosLlevarRepository {
         total: true,
         creadoEn: true,
         sucursal: { select: { nombre: true } },
-        pagos: { orderBy: { id: 'desc' }, take: 1, select: { estado: true } },
+        pagos: { orderBy: { id: 'desc' }, take: 1, select: { estado: true, comprobante: { select: { id: true } } } },
         detalles: {
           orderBy: { id: 'asc' },
           select: {

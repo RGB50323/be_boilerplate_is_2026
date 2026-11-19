@@ -72,7 +72,11 @@ describe('Consulta y descarga de comprobantes', () => {
   });
 
   it('consulta sin reclamar y entrega ORIGINAL, COPIA y COPIA con los mismos datos', async () => {
-    const { pedido, primeraGeneracionPdfEn, ...historico } = comprobante;
+    const {
+      pedido: _pedido,
+      primeraGeneracionPdfEn: _primeraGeneracionPdfEn,
+      ...historico
+    } = comprobante;
     const antes = await controller.consultar(comprobante.id, cliente);
     expect(antes).toStrictEqual(historico);
     expect(updateMany).not.toHaveBeenCalled();
@@ -151,7 +155,7 @@ describe('Consulta y descarga de comprobantes', () => {
 
   it.each([
     { id: 'cliente-2', rol: Rol.CLIENTE },
-    { id: 'mesero-2', rol: Rol.MESERO, sucursalId: 1 },
+    { id: 'mesero-2', rol: Rol.MESERO, sucursalId: 2 },
     { rol: Rol.GERENTE, sucursalId: 2 },
   ])('devuelve 403 fuera del alcance del usuario %j', async (usuario) => {
     await expect(
@@ -165,7 +169,7 @@ describe('Consulta y descarga de comprobantes', () => {
   });
 
   it.each([
-    { id: 'mesero-1', rol: Rol.MESERO, sucursalId: 1 },
+    { id: 'mesero-2', rol: Rol.MESERO, sucursalId: 1 },
     { rol: Rol.GERENTE, sucursalId: 1 },
     { rol: Rol.GERENTE_GENERAL },
   ])('permite consultar dentro del alcance del usuario %j', async (usuario) => {

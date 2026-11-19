@@ -17,11 +17,11 @@ export class ComprobantesRepository {
         transaccionId: true,
         fechaEmision: true,
         contenidoSnapshot: true,
+        detallePago: true,
         primeraGeneracionPdfEn: true,
         pedido: {
           select: {
             clienteId: true,
-            meseroId: true,
             sucursalId: true,
             tipo: true,
           },

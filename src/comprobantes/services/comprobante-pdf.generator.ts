@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
+import type { Prisma } from '@PrismaClient';
 import type { SnapshotPdf } from './comprobante-pdf.snapshot.js';
 
 @Injectable()
@@ -12,11 +13,17 @@ export class ComprobantePdfGenerator {
       fechaEmision: Date;
       transaccionId: string;
       contenidoSnapshot: SnapshotPdf;
+      detallePago?: Prisma.JsonValue;
     },
     tipo: 'ORIGINAL' | 'COPIA',
   ): Promise<Buffer> {
-    const { numero, fechaEmision, transaccionId, contenidoSnapshot } =
-      comprobante;
+    const {
+      numero,
+      fechaEmision,
+      transaccionId,
+      contenidoSnapshot,
+      detallePago,
+    } = comprobante;
     const doc = new PDFDocument({ size: 'A4', margin: 48 });
 
     return new Promise((resolve, reject) => {
@@ -51,6 +58,22 @@ export class ComprobantePdfGenerator {
         .font('Helvetica-Bold')
         .fontSize(13)
         .text(`Total pagado: ${contenidoSnapshot.total}`);
+      if (
+        detallePago &&
+        typeof detallePago === 'object' &&
+        !Array.isArray(detallePago)
+      ) {
+        const { montoRecibido, cambio, marca, ultimosCuatro } = detallePago;
+        doc.font('Helvetica').fontSize(11);
+        if (typeof montoRecibido === 'string' && typeof cambio === 'string') {
+          doc.text(
+            'Efectivo. Recibido: ' + montoRecibido + '   Cambio: ' + cambio,
+          );
+        }
+        if (typeof marca === 'string' && typeof ultimosCuatro === 'string') {
+          doc.text('Tarjeta simulada: ' + marca + ' **** ' + ultimosCuatro);
+        }
+      }
       doc.end();
     });
   }

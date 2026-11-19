@@ -256,6 +256,7 @@ describe('obtenerSeguimiento', () => {
       total: 17.98,
       creadoEn: '2026-11-14T18:00:00.000Z',
       pago: 'CONFIRMADO',
+      comprobanteId: null,
       items: [
         {
           itemId: 1,

@@ -1,32 +1,16 @@
-
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Patch,
-  Post,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { CurrentUser, Roles } from '@Auth/decorators';
 import { Rol, type User } from '@PrismaClient';
 import { ProcesarPagoDto } from '@Pagos/dto';
 import { PagosService } from '@Pagos/services';
 import { CambiarEstadoPagoDto } from '../dto/cambiar-estado-pago.dto.js';
 
-
 @Controller('pagos')
 export class PagosController {
-  constructor(
-    private readonly pagosService: PagosService,
-  ) {}
+  constructor(private readonly pagosService: PagosService) {}
 
   @Post('procesar')
-  @Roles(
-    Rol.CLIENTE,
-    Rol.MESERO,
-    Rol.GERENTE,
-    Rol.GERENTE_GENERAL,
-  )
+  @Roles(Rol.CLIENTE, Rol.MESERO, Rol.GERENTE, Rol.GERENTE_GENERAL)
   async procesarPago(
     @Body() datos: ProcesarPagoDto,
     @CurrentUser() usuario: User,
@@ -35,13 +19,12 @@ export class PagosController {
   }
 
   @Get('transaccion/:transaccionId')
-  @Roles(Rol.GERENTE, Rol.GERENTE_GENERAL)
+  @Roles(Rol.MESERO, Rol.GERENTE, Rol.GERENTE_GENERAL)
   async consultarTransaccion(
     @Param('transaccionId') transaccionId: string,
+    @CurrentUser() usuario: User,
   ) {
-    return this.pagosService.consultarTransaccion(
-      transaccionId,
-    );
+    return this.pagosService.consultarTransaccion(transaccionId, usuario);
   }
 
   @Patch('transaccion/:transaccionId/estado')
@@ -49,10 +32,12 @@ export class PagosController {
   async cambiarEstado(
     @Param('transaccionId') transaccionId: string,
     @Body() datos: CambiarEstadoPagoDto,
+    @CurrentUser() usuario: User,
   ) {
     return this.pagosService.cambiarEstadoTransaccion(
       transaccionId,
       datos.estado,
+      usuario,
     );
   }
 }

@@ -44,6 +44,36 @@ const comprobante = {
 describe('ComprobantePdfGenerator', () => {
   const generator = new ComprobantePdfGenerator();
 
+  it.each([
+    [
+      { montoRecibido: '5.00', cambio: '0.20' },
+      'Efectivo. Recibido: 5.00   Cambio: 0.20',
+    ],
+    [
+      { marca: 'VISA', ultimosCuatro: '4242' },
+      'Tarjeta simulada: VISA **** 4242',
+    ],
+  ])(
+    'imprime el detalle historico %j en ambas descargas',
+    async (detallePago, linea) => {
+      for (const tipo of ['ORIGINAL', 'COPIA'] as const) {
+        const pdf = await generator.generar(
+          { ...comprobante, detallePago },
+          tipo,
+        );
+        expect(leerLineas(pdf)).toContain(linea);
+      }
+    },
+  );
+
+  it('genera el PDF sin informacion complementaria para detalle null', async () => {
+    const pdf = await generator.generar(
+      { ...comprobante, detallePago: null },
+      'COPIA',
+    );
+    expect(leerLineas(pdf).at(-1)).toBe('Total pagado: 4.80');
+  });
+
   it('genera documentos PDF con la misma información y el número original', async () => {
     const original = await generator.generar(comprobante, 'ORIGINAL');
     const copia = await generator.generar(comprobante, 'COPIA');

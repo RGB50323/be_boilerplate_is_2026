@@ -22,6 +22,7 @@ import {
   ESTADOS_CERRADOS,
   ItemNoModificableError,
   PedidoSinItemsError,
+  PedidoCerradoError,
   PedidosRepository,
   type ItemExistente,
   type ItemNuevo,
@@ -257,6 +258,9 @@ export class PedidosService {
     }
     if (error instanceof ItemNoModificableError) {
       return new ConflictException(ITEM_LISTO);
+    }
+    if (error instanceof PedidoCerradoError) {
+      return new ConflictException('El pedido ya está cerrado.');
     }
     if (error instanceof PedidoSinItemsError) {
       return new ConflictException(

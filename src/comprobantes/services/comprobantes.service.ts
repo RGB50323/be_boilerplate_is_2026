@@ -22,7 +22,7 @@ export class ComprobantesService {
 
   // La consulta de metadatos deja intacta la marca de primera generación.
   async consultar(id: number, usuario: User) {
-    const { primeraGeneracionPdfEn, ...resultado } =
+    const { primeraGeneracionPdfEn: _primeraGeneracionPdfEn, ...resultado } =
       await this.buscarAutorizado(id, usuario);
     return resultado;
   }
@@ -43,8 +43,7 @@ export class ComprobantesService {
         pedido.sucursalId === usuario.sucursalId) ||
       (usuario.rol === Rol.MESERO &&
         pedido.tipo === TipoPedido.MESA &&
-        pedido.sucursalId === usuario.sucursalId &&
-        pedido.meseroId === usuario.id);
+        pedido.sucursalId === usuario.sucursalId);
 
     if (!puedeConsultar) {
       throw new ForbiddenException(
@@ -89,6 +88,7 @@ export class ComprobantesService {
       pedidoId: number;
       transaccionId: string;
       ticketSnapshot: Prisma.InputJsonValue;
+      detallePago?: Prisma.InputJsonValue;
     },
   ) {
     // H17 conserva su propia copia histórica del ticket validado por H16.
@@ -98,6 +98,7 @@ export class ComprobantesService {
       ticketId: pago.pedidoId,
       transaccionId: pago.transaccionId,
       contenidoSnapshot: pago.ticketSnapshot,
+      detallePago: pago.detallePago,
     });
   }
 }
