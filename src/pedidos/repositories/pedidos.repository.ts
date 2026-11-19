@@ -4,6 +4,7 @@ import { PrismaService } from '@Prisma/services';
 
 export const ESTADOS_CERRADOS: EstadoPedido[] = [
   EstadoPedido.ENTREGADO,
+  EstadoPedido.CERRADO,
   EstadoPedido.CANCELADO,
 ];
 
@@ -18,6 +19,8 @@ export class ItemNoModificableError extends Error {
     super('El ítem ya no se puede modificar');
   }
 }
+
+export class PedidoCerradoError extends Error {}
 
 export class PedidoSinItemsError extends Error {
   constructor() {
@@ -245,6 +248,14 @@ export class PedidosRepository {
 
   agregarItems(pedidoId: number, sucursalId: number, items: ItemNuevo[]) {
     return this.prisma.$transaction(async (tx) => {
+      const [pedido] = await tx.$queryRaw<{ estado: EstadoPedido }[]>(Prisma.sql`
+        SELECT estado::text AS estado FROM pedido
+        WHERE id = ${pedidoId} FOR NO KEY UPDATE
+      `);
+      if (!pedido || ESTADOS_CERRADOS.includes(pedido.estado)) {
+        throw new PedidoCerradoError();
+      }
+
       await descontar(tx, sucursalId, totalizar(items));
 
       const agregados = await tx.detallePedido.createManyAndReturn({

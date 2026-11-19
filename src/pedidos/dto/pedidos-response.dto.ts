@@ -178,6 +178,9 @@ export class PedidoSeguimientoResponseDto {
   })
   pago!: string | null;
 
+  @ApiProperty({ type: Number, nullable: true })
+  comprobanteId!: number | null;
+
   @ApiProperty({ type: [ItemDetalleResponseDto] })
   items!: ItemDetalleResponseDto[];
 }

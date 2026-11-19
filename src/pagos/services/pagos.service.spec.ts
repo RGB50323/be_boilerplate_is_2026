@@ -1,6 +1,7 @@
 
 import {
   BadGatewayException,
+  BadRequestException,
   ServiceUnavailableException,
   ConflictException,
   ForbiddenException,
@@ -26,6 +27,8 @@ describe('PagosService - BE-16.1', () => {
     rol: Rol.CLIENTE,
   } as User;
 
+  const gerenteGeneral = { rol: Rol.GERENTE_GENERAL } as User;
+
   const repository = {
     buscarPorSolicitud: vi.fn(),
     buscarPedido: vi.fn(),
@@ -34,6 +37,7 @@ describe('PagosService - BE-16.1', () => {
     buscarPorTransaccion: vi.fn(),
     obtenerEstado: vi.fn(),
     actualizarEstado: vi.fn(),
+    confirmarYEmitirComprobante: vi.fn(),
   };
 
   const pasarela = {
@@ -41,7 +45,7 @@ describe('PagosService - BE-16.1', () => {
     cambiarEstado: vi.fn(),
   };
 
-  const datos: ProcesarPagoDto = {
+  const datos = {
     solicitudId: 'H16-QA-UNIT-01',
     ticket: {
       id: 54,
@@ -120,6 +124,7 @@ describe('PagosService - BE-16.1', () => {
 
     expect(resultado).toEqual({
       pagoId: 10,
+      comprobanteId: null,
       ticketId: 54,
       transaccionId: 'transaccion-test-01',
       estado: EstadoPago.PENDIENTE,
@@ -184,14 +189,14 @@ describe('PagosService - BE-16.1', () => {
     expect(repository.crear).not.toHaveBeenCalled();
   });
 
-  it('no ejecuta la pasarela si el pedido tiene un pago bloqueante', async () => {
+  it.each([EstadoPago.PENDIENTE, EstadoPago.CONFIRMADO, EstadoPago.REEMBOLSADO])('bloquea un nuevo cobro si hay un pago %s', async (estado) => {
     repository.buscarPagoBloqueante.mockResolvedValue({
       id: 10,
-      estado: EstadoPago.REEMBOLSADO,
+      estado,
     });
 
     await expect(service.procesarPago(datos, usuario)).rejects.toThrow(
-      'El pedido 54 ya tiene un pago en estado REEMBOLSADO',
+      'El pedido 54 ya tiene un pago en estado ' + estado,
     );
 
     expect(pasarela.procesarPago).not.toHaveBeenCalled();
@@ -229,9 +234,10 @@ describe('PagosService - BE-16.1', () => {
         repository.obtenerEstado.mockResolvedValue(pago);
 
         const resultado =
-        await service.consultarTransaccion(transaccionId);
+        await service.consultarTransaccion(transaccionId, gerenteGeneral);
 
-        expect(resultado).toEqual(pago);
+        const { pedido: _pedido, ...datosPago } = pago;
+        expect(resultado).toEqual({ ...datosPago, comprobanteId: null });
         expect(repository.obtenerEstado).toHaveBeenCalledWith(
         transaccionId,
         );
@@ -241,13 +247,13 @@ describe('PagosService - BE-16.1', () => {
         repository.obtenerEstado.mockResolvedValue(null);
 
         await expect(
-        service.consultarTransaccion('inexistente'),
+        service.consultarTransaccion('inexistente', gerenteGeneral),
         ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('actualiza una transacción de PENDIENTE a CONFIRMADO', async () => {
         repository.buscarPorTransaccion.mockResolvedValue(pago);
-        repository.actualizarEstado.mockResolvedValue({ count: 1 });
+        repository.confirmarYEmitirComprobante.mockResolvedValue({ count: 1 });
 
         const pagoConfirmado = {
         ...pago,
@@ -259,7 +265,7 @@ describe('PagosService - BE-16.1', () => {
 
         const resultado = await service.cambiarEstadoTransaccion(
         transaccionId,
-        EstadoTransaccionSimulada.CONFIRMADO,
+        EstadoTransaccionSimulada.CONFIRMADO, gerenteGeneral
         );
 
         expect(pasarela.cambiarEstado).toHaveBeenCalledWith(
@@ -267,10 +273,9 @@ describe('PagosService - BE-16.1', () => {
         EstadoTransaccionSimulada.CONFIRMADO,
         );
 
-        expect(repository.actualizarEstado).toHaveBeenCalledWith(
+        expect(repository.confirmarYEmitirComprobante).toHaveBeenCalledWith(
         transaccionId,
         EstadoPago.PENDIENTE,
-        EstadoPago.CONFIRMADO,
         );
 
         expect(resultado.estado).toBe(EstadoPago.CONFIRMADO);
@@ -278,7 +283,7 @@ describe('PagosService - BE-16.1', () => {
 
     it('notifica a H05 al confirmar un pedido para llevar', async () => {
       repository.buscarPorTransaccion.mockResolvedValue(pago);
-      repository.actualizarEstado.mockResolvedValue({ count: 1 });
+      repository.confirmarYEmitirComprobante.mockResolvedValue({ count: 1 });
       repository.obtenerEstado.mockResolvedValue({
         ...pago,
         estado: EstadoPago.CONFIRMADO,
@@ -286,7 +291,7 @@ describe('PagosService - BE-16.1', () => {
 
       await service.cambiarEstadoTransaccion(
         transaccionId,
-        EstadoTransaccionSimulada.CONFIRMADO,
+        EstadoTransaccionSimulada.CONFIRMADO, gerenteGeneral
       );
 
       expect(pedidosLlevar.confirmarPago).toHaveBeenCalledOnce();
@@ -301,7 +306,7 @@ describe('PagosService - BE-16.1', () => {
         },
       });
 
-      repository.actualizarEstado.mockResolvedValue({ count: 1 });
+      repository.confirmarYEmitirComprobante.mockResolvedValue({ count: 1 });
 
       repository.obtenerEstado.mockResolvedValue({
         ...pago,
@@ -310,7 +315,7 @@ describe('PagosService - BE-16.1', () => {
 
       await service.cambiarEstadoTransaccion(
         transaccionId,
-        EstadoTransaccionSimulada.CONFIRMADO,
+        EstadoTransaccionSimulada.CONFIRMADO, gerenteGeneral
       );
 
       expect(pedidosLlevar.confirmarPago).not.toHaveBeenCalled();
@@ -323,7 +328,7 @@ describe('PagosService - BE-16.1', () => {
         await expect(
         service.cambiarEstadoTransaccion(
             'inexistente',
-            EstadoTransaccionSimulada.CONFIRMADO,
+            EstadoTransaccionSimulada.CONFIRMADO, gerenteGeneral
         ),
         ).rejects.toBeInstanceOf(NotFoundException);
 
@@ -334,19 +339,18 @@ describe('PagosService - BE-16.1', () => {
         repository.buscarPorTransaccion.mockResolvedValue(pago);
 
         // Otro proceso modificó el estado antes de actualizar
-        repository.actualizarEstado.mockResolvedValue({ count: 0 });
+        repository.confirmarYEmitirComprobante.mockResolvedValue({ count: 0 });
 
         await expect(
         service.cambiarEstadoTransaccion(
             transaccionId,
-            EstadoTransaccionSimulada.CONFIRMADO,
+            EstadoTransaccionSimulada.CONFIRMADO, gerenteGeneral
         ),
         ).rejects.toBeInstanceOf(ConflictException);
 
-        expect(repository.actualizarEstado).toHaveBeenCalledWith(
+        expect(repository.confirmarYEmitirComprobante).toHaveBeenCalledWith(
         transaccionId,
         EstadoPago.PENDIENTE,
-        EstadoPago.CONFIRMADO,
         );
     });
     });
@@ -443,6 +447,7 @@ describe('PagosService - BE-16.1', () => {
     repository.buscarPedido.mockResolvedValue({
       ...pedido,
       tipo: TipoPedido.MESA,
+      estado: EstadoPedido.ENTREGADO,
       sucursalId: 1,
     });
 
@@ -485,6 +490,7 @@ describe('PagosService - BE-16.1', () => {
     repository.buscarPedido.mockResolvedValue({
       ...pedido,
       tipo: TipoPedido.MESA,
+      estado: EstadoPedido.ENTREGADO,
       sucursalId: 1,
     });
 
@@ -535,6 +541,175 @@ describe('PagosService - BE-16.1', () => {
     expect(resultado.estado).toBe(EstadoPago.PENDIENTE);
     expect(pasarela.procesarPago).not.toHaveBeenCalled();
     expect(repository.crear).not.toHaveBeenCalled();
+  });
+
+  describe('cobro de mesa en efectivo', () => {
+    const mesero = { rol: Rol.MESERO, sucursalId: 1 } as User;
+    beforeEach(() => {
+      repository.buscarPedido.mockResolvedValue({
+        ...pedido,
+        tipo: TipoPedido.MESA,
+        estado: EstadoPedido.ENTREGADO,
+        sucursalId: 1,
+      });
+    });
+
+    it.each([['22.48', '0.00'], ['25', '2.52']])(
+      'confirma al recibir %s y calcula cambio %s',
+      async (montoRecibido, cambio) => {
+        repository.crear.mockResolvedValue({
+          id: 10, pedidoId: 54, estado: EstadoPago.CONFIRMADO, comprobante: { id: 12 },
+        });
+        await expect(service.procesarPago({ ...datos, metodo: 'EFECTIVO', montoRecibido }, mesero))
+          .resolves.toMatchObject({ estado: EstadoPago.CONFIRMADO, comprobanteId: 12 });
+        expect(repository.crear).toHaveBeenCalledWith(expect.objectContaining({
+          metodo: 'EFECTIVO',
+          monto: new Prisma.Decimal('22.48'),
+          estado: EstadoPago.CONFIRMADO,
+          detallePago: { montoRecibido: new Prisma.Decimal(montoRecibido).toFixed(2), cambio },
+        }));
+        expect(pasarela.procesarPago).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rechaza efectivo insuficiente', async () => {
+      await expect(service.procesarPago({
+        ...datos, metodo: 'EFECTIVO', montoRecibido: '22.47',
+      }, mesero)).rejects.toBeInstanceOf(BadRequestException);
+      expect(repository.crear).not.toHaveBeenCalled();
+    });
+
+    it.each([EstadoPedido.LISTO, EstadoPedido.CERRADO])('rechaza un nuevo cobro en %s', async (estado) => {
+      repository.buscarPedido.mockResolvedValue({
+        ...pedido, tipo: TipoPedido.MESA, sucursalId: 1, estado,
+      });
+      await expect(service.procesarPago(datos, mesero)).rejects.toBeInstanceOf(ConflictException);
+      expect(repository.crear).not.toHaveBeenCalled();
+    });
+
+    it('recupera un cobro concurrente con la misma solicitud sin duplicarlo', async () => {
+      repository.buscarPorSolicitud.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        id: 10, pedidoId: 54, monto: pedido.total, estado: EstadoPago.CONFIRMADO,
+        metodo: 'EFECTIVO', detallePago: { montoRecibido: '25.00', cambio: '2.52' },
+        comprobante: { id: 12 },
+      });
+      repository.crear.mockRejectedValue(new ConflictException());
+      await expect(service.procesarPago({
+        ...datos, metodo: 'EFECTIVO', montoRecibido: '25.00',
+      }, mesero)).resolves.toMatchObject({ pagoId: 10, comprobanteId: 12 });
+      expect(repository.crear).toHaveBeenCalledOnce();
+      expect(pasarela.procesarPago).not.toHaveBeenCalled();
+    });
+  });
+
+  it('permite consultar cobros MESA de la sucursal y protege las demas transacciones', async () => {
+    const mesero = { rol: Rol.MESERO, sucursalId: 1 } as User;
+    const transaccion = {
+      estado: EstadoPago.CONFIRMADO, comprobante: { id: 12 },
+      pedido: { tipo: TipoPedido.MESA, sucursalId: 1 },
+    };
+    repository.obtenerEstado.mockResolvedValueOnce(transaccion)
+      .mockResolvedValueOnce({ ...transaccion, pedido: { ...transaccion.pedido, sucursalId: 2 } })
+      .mockResolvedValueOnce({ ...transaccion, pedido: { ...transaccion.pedido, tipo: TipoPedido.LLEVAR } });
+    await expect(service.consultarTransaccion('t1', mesero))
+      .resolves.toEqual({ estado: EstadoPago.CONFIRMADO, comprobanteId: 12 });
+    await expect(service.consultarTransaccion('t2', mesero)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.consultarTransaccion('t3', mesero)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  describe('alcance de las transacciones', () => {
+    const gerente = { rol: Rol.GERENTE, sucursalId: 1 } as User;
+    const mesero = { rol: Rol.MESERO, sucursalId: 1 } as User;
+    const transaccion = {
+      metodo: 'TARJETA',
+      estado: EstadoPago.PENDIENTE,
+      pedido: { sucursalId: 2, tipo: TipoPedido.MESA },
+    };
+
+    beforeEach(() => {
+      repository.buscarPorTransaccion.mockResolvedValue(transaccion);
+      repository.obtenerEstado.mockResolvedValue(transaccion);
+    });
+
+    it('impide que un gerente consulte o cambie pagos de otra sucursal', async () => {
+      await expect(service.consultarTransaccion('t', gerente)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.cambiarEstadoTransaccion('t', EstadoTransaccionSimulada.CONFIRMADO, gerente))
+        .rejects.toBeInstanceOf(ForbiddenException);
+      expect(pasarela.cambiarEstado).not.toHaveBeenCalled();
+      expect(repository.confirmarYEmitirComprobante).not.toHaveBeenCalled();
+    });
+
+    it('permite a un gerente consultar y rechazar una tarjeta de su sucursal', async () => {
+      const local = { ...transaccion, pedido: { ...transaccion.pedido, sucursalId: 1 } };
+      repository.buscarPorTransaccion.mockResolvedValue(local);
+      repository.obtenerEstado.mockResolvedValueOnce(local).mockResolvedValueOnce({ ...local, estado: EstadoPago.RECHAZADO });
+      repository.actualizarEstado.mockResolvedValue({ count: 1 });
+      await expect(service.consultarTransaccion('t', gerente)).resolves.toMatchObject({ estado: EstadoPago.PENDIENTE });
+      await expect(service.cambiarEstadoTransaccion('t', EstadoTransaccionSimulada.RECHAZADO, gerente))
+        .resolves.toMatchObject({ estado: EstadoPago.RECHAZADO });
+      expect(repository.confirmarYEmitirComprobante).not.toHaveBeenCalled();
+    });
+
+    it('rechaza al cliente y al mesero en el cambio de estado aunque invoquen el servicio', async () => {
+      await expect(service.consultarTransaccion('t', usuario)).rejects.toBeInstanceOf(ForbiddenException);
+      for (const actor of [usuario, mesero]) {
+        await expect(service.cambiarEstadoTransaccion('t', EstadoTransaccionSimulada.CONFIRMADO, actor))
+          .rejects.toBeInstanceOf(ForbiddenException);
+      }
+      expect(repository.obtenerEstado).not.toHaveBeenCalled();
+      expect(repository.buscarPorTransaccion).not.toHaveBeenCalled();
+    });
+
+    it('impide cambiar un cobro en efectivo mediante el simulador', async () => {
+      repository.buscarPorTransaccion.mockResolvedValue({ ...transaccion, metodo: 'EFECTIVO', estado: EstadoPago.CONFIRMADO });
+      await expect(service.cambiarEstadoTransaccion('t', EstadoTransaccionSimulada.REEMBOLSADO, gerenteGeneral))
+        .rejects.toBeInstanceOf(ConflictException);
+      expect(pasarela.cambiarEstado).not.toHaveBeenCalled();
+      expect(repository.actualizarEstado).not.toHaveBeenCalled();
+    });
+  });
+
+  it('solo permite al cliente propietario iniciar un nuevo cobro para llevar', async () => {
+    const gerente = { rol: Rol.GERENTE_GENERAL } as User;
+    await expect(service.procesarPago(datos, gerente)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(repository.crear).not.toHaveBeenCalled();
+  });
+
+  it('recupera H05 cuando se repite la solicitud de un pago confirmado', async () => {
+    repository.buscarPorSolicitud.mockResolvedValue({
+      id: 10, pedidoId: 54, monto: pedido.total, estado: EstadoPago.CONFIRMADO,
+      comprobante: { id: 12 },
+    });
+    pedidosLlevar.confirmarPago.mockRejectedValueOnce(new Error('H05 temporalmente no disponible'));
+    await expect(service.procesarPago(datos, usuario)).rejects.toThrow('H05');
+    await expect(service.procesarPago(datos, usuario)).resolves.toMatchObject({
+      pagoId: 10, estado: EstadoPago.CONFIRMADO, comprobanteId: 12,
+    });
+    expect(pedidosLlevar.confirmarPago).toHaveBeenCalledTimes(2);
+    expect(repository.crear).not.toHaveBeenCalled();
+  });
+
+  it('permite un nuevo intento de tarjeta despues de un rechazo', async () => {
+    const transaccionId = 'anterior';
+    repository.buscarPorTransaccion.mockResolvedValue({
+      estado: EstadoPago.PENDIENTE, pedido: { tipo: TipoPedido.LLEVAR },
+    });
+    repository.actualizarEstado.mockResolvedValue({ count: 1 });
+    repository.obtenerEstado.mockResolvedValue({ estado: EstadoPago.RECHAZADO, pedido: { tipo: TipoPedido.LLEVAR, sucursalId: 1 } });
+    await service.cambiarEstadoTransaccion(transaccionId, EstadoTransaccionSimulada.RECHAZADO, gerenteGeneral);
+    expect(repository.confirmarYEmitirComprobante).not.toHaveBeenCalled();
+    expect(pedidosLlevar.confirmarPago).not.toHaveBeenCalled();
+
+    const nuevo = {
+      ...datos, solicitudId: 'otro-intento', metodo: 'TARJETA' as const,
+      marca: 'VISA', ultimosCuatro: '4242',
+    };
+    await expect(service.procesarPago(nuevo, usuario)).resolves.toMatchObject({
+      estado: EstadoPago.PENDIENTE, comprobanteId: null,
+    });
+    expect(repository.crear).toHaveBeenCalledWith(expect.objectContaining({
+      detallePago: { marca: 'VISA', ultimosCuatro: '4242' },
+    }));
   });
 
   it('permite pagar un pedido de mesa entregado', async () => {

@@ -106,6 +106,7 @@ export class PedidosLlevarService {
       total: pedido.total.toNumber(),
       creadoEn: pedido.creadoEn.toISOString(),
       pago: pedido.pagos[0]?.estado ?? null,
+      comprobanteId: pedido.pagos[0]?.comprobante?.id ?? null,
       items: pedido.detalles.map((d) => ({
         itemId: d.id,
         platilloId: d.platilloId,

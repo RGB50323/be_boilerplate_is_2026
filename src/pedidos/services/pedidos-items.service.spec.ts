@@ -117,10 +117,8 @@ describe('PedidosService (items)', () => {
       expect(repository.buscarPedido).not.toHaveBeenCalled();
     });
 
-    it('409 si el pedido está cerrado', async () => {
-      repository.buscarPedido.mockResolvedValue(
-        pedidoAbierto(EstadoPedido.ENTREGADO),
-      );
+    it.each([EstadoPedido.ENTREGADO, EstadoPedido.CERRADO])('409 si el pedido está %s', async (estado) => {
+      repository.buscarPedido.mockResolvedValue(pedidoAbierto(estado));
 
       await expect(
         service.agregarItems(120, dtoAgregar, mesero),
