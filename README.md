@@ -17,6 +17,7 @@ API REST construida con **NestJS 12**, **Prisma 7** y **PostgreSQL 18**, con aut
 - [Autenticación](#autenticación)
 - [Endpoints](#endpoints)
 - [Cocina: pedidos pendientes (H06)](#cocina-pedidos-pendientes-h06)
+- [Mesero: entrega de platillos (H08)](#mesero-entrega-de-platillos-h08)
 - [Dashboard de ventas (H28)](#dashboard-de-ventas-h28)
 - [Paginación común](#paginación-común)
 - [Arquitectura por capas](#arquitectura-por-capas)
@@ -324,6 +325,14 @@ Base: `http://localhost:3000/api/v1` · Documentación interactiva: `http://loca
 | `GET` | `/auth/me` | Bearer | `200` | Usuario autenticado |
 | `GET` | `/cocina/pedidos` | Bearer · `COCINA`, `GERENTE`, `GERENTE_GENERAL` | `200` | Pedidos pendientes de cocina de la sucursal del usuario |
 | `PATCH` | `/cocina/items/:itemId/listo` | Bearer · `COCINA`, `GERENTE` | `200` | Marca un platillo como listo (H07) |
+| `GET` | `/mesero/items-listos` | Bearer · `MESERO` | `200` | Platillos listos por entregar en las mesas de la sucursal (H08) |
+| `PATCH` | `/mesero/items/:itemId/entregado` | Bearer · `MESERO` | `200` | Marca un platillo como entregado (H08) |
+| `GET` | `/inventario/insumos` | Bearer · `GERENTE` | `200` | Insumos de la sucursal del gerente, con búsqueda y estado (H14) |
+| `POST` | `/inventario/insumos` | Bearer · `GERENTE` | `201` | Registra un insumo con cantidad inicial 0 (H14) |
+| `POST` | `/inventario/insumos/:id/movimientos` | Bearer · `GERENTE` | `201` | Registra una entrada o salida del insumo (H14) |
+| `GET` | `/inventario/insumos/:id/movimientos` | Bearer · `GERENTE` | `200` | Historial paginado de movimientos del insumo (H14) |
+| `GET` | `/inventario/alertas` | Bearer · `GERENTE` | `200` | Alertas sin resolver de la sucursal del gerente (H15) |
+| `PATCH` | `/inventario/alertas/:id/vista` | Bearer · `GERENTE` | `200` | Marca una alerta como vista (H15) |
 | `GET` | `/dashboard/ventas` | Bearer · `GERENTE_GENERAL` | `200` | Ventas por sucursal con ticket promedio, total general, platillos y horarios pico |
 | `GET` | `/dashboard/ventas/detalle` | Bearer · `GERENTE_GENERAL` | `200` | Ventas confirmadas, una por pedido, paginadas |
 | `GET` | `/dashboard/ventas/exportar` | Bearer · `GERENTE_GENERAL` | `200` | CSV de ventas por sucursal y total general |
@@ -499,6 +508,121 @@ curl -X PATCH $BASE/cocina/items/301/listo -H "Authorization: Bearer $ACCESS_TOK
 
 ---
 
+## Mesero: entrega de platillos (H08)
+
+### `GET /mesero/items-listos`
+
+```jsonc
+// 200 OK — del que se marcó listo primero al último
+[{ "itemId": 301, "pedidoId": 120, "mesa": 7, "platillo": "Pupusa revuelta", "cantidad": 3, "listoEn": "12:18" }]
+```
+
+- Solo ítems `LISTO` de pedidos de mesa (no para llevar ni cancelados) de la sucursal del usuario autenticado. Los entregados ya no aparecen.
+- `mesa` es el número de mesa: el front agrupa por ese campo. `listoEn` es la hora local de El Salvador en `HH:mm`.
+- Errores: `401` sin sesión; `403` si el rol no es `MESERO` o el usuario no tiene sucursal.
+
+### `PATCH /mesero/items/:itemId/entregado`
+
+```jsonc
+// 200 OK
+{ "itemId": 301, "estado": "ENTREGADO", "entregadoEn": "12:25", "pedidoEstado": "ENTREGADO" }
+```
+
+- Marca el ítem como `ENTREGADO` y guarda `entregado_en` y `entregado_por_id` (el mesero autenticado). Si todos los ítems del pedido quedan `ENTREGADO`, el pedido pasa a `ENTREGADO` (queda cerrado y la mesa se libera).
+- Al completar el pedido, después del commit, publica `pedido:entregado` (`PedidoCocinaDto`) en el namespace `/cocina`.
+- Errores: `401` sin sesión; `403` si el rol no es `MESERO`, si el usuario no tiene sucursal o si el platillo es de otra sucursal; `404` si el platillo no existe; `409` si ya fue entregado o el pedido está cancelado; `422` si todavía no está listo.
+- **Concurrencia:** igual que H07, bloquea la fila del ítem y la del pedido (`SELECT … FOR UPDATE`). Si dos meseros entregan el mismo platillo a la vez, uno recibe `200` y el otro `409`.
+
+---
+
+## Inventario de insumos (H14)
+
+Solo para `GERENTE`. La sucursal siempre sale del usuario autenticado, nunca de un parámetro: si el body trae `sucursalId`, la validación responde `400`.
+
+### `GET /inventario/insumos?q=queso`
+
+```jsonc
+// 200 OK — ordenados por nombre
+[{ "id": 5, "nombre": "Queso con loroco", "unidad": "lb", "cantidad": 12.5, "minimo": 10, "estado": "NORMAL" }]
+```
+
+- `q` filtra por parte del nombre sin distinguir mayúsculas.
+- `estado` se calcula, no se guarda: `BAJO` si `cantidad <= minimo`, si no `NORMAL`.
+- Errores: `401` sin sesión; `403` si el rol no es `GERENTE` o el usuario no tiene sucursal.
+
+### `POST /inventario/insumos`
+
+```jsonc
+// Body
+{ "nombre": "Masa de maíz", "unidad": "lb", "minimo": 20 }
+// 201 Created
+{ "id": 9, "nombre": "Masa de maíz", "unidad": "lb", "cantidad": 0, "minimo": 20, "estado": "BAJO" }
+```
+
+- Unidades permitidas: `lb`, `kg`, `l`, `unidad`. Se guardan en el enum `unidad_insumo`.
+- Errores: `400` nombre o unidad vacíos, unidad no permitida o mínimo negativo; `401`; `403`; `409` si ya existe un insumo con ese nombre en la sucursal (sin distinguir mayúsculas, índice `insumo_sucursal_nombre_ci`).
+
+### `POST /inventario/insumos/:id/movimientos`
+
+```jsonc
+// Body
+{ "tipo": "SALIDA", "cantidad": 3, "motivo": "Uso en cocina" }
+// 201 Created
+{ "movimientoId": 88, "cantidadAnterior": 12.5, "cantidadActual": 9.5 }
+```
+
+- Guarda el movimiento (usuario, fecha y hora, motivo, cantidad anterior y actual) y la nueva cantidad del insumo en una sola transacción.
+- En la misma transacción evalúa las alertas del insumo (ver H15).
+- Errores: `400` cantidad menor o igual a 0, tipo inválido o motivo vacío; `401`; `403` si el rol no es `GERENTE` o el insumo es de otra sucursal; `404` si el insumo no existe; `422` si la salida supera la existencia (la cantidad no cambia) o si la entrada supera el máximo de `DECIMAL(12, 3)`.
+- **Concurrencia:** la transacción bloquea la fila del insumo (`SELECT … FOR UPDATE`) antes de leer la cantidad. Si dos salidas simultáneas juntas superan la existencia, una recibe `201` y la otra `422`.
+
+### `GET /inventario/insumos/:id/movimientos?pagina=1`
+
+```jsonc
+// 200 OK — 10 por página, del más reciente al más antiguo
+{
+  "pagina": 1, "totalPaginas": 3, "total": 23,
+  "datos": [{ "id": 88, "fecha": "2026-11-17", "hora": "14:05", "usuario": "Ana López", "tipo": "SALIDA", "cantidad": 3, "motivo": "Uso en cocina" }]
+}
+```
+
+- `fecha` y `hora` en hora local de El Salvador. `usuario` es el nombre de quien registró el movimiento (su email si no tiene nombre).
+- Errores: `400` página inválida; `401`; `403` si el rol no es `GERENTE` o el insumo es de otra sucursal; `404` si el insumo no existe.
+
+---
+
+## Alertas de inventario (H15)
+
+### Generación y cierre automático
+
+Cada movimiento de `POST /inventario/insumos/:id/movimientos` llama a `EvaluadorAlertasInventario.evaluar` dentro de su transacción, con la fila del insumo bloqueada:
+
+| Después del movimiento | Sin alerta abierta | Con alerta `ACTIVA` o `VISTA` |
+|---|---|---|
+| `cantidad <= minimo` | Crea una alerta `ACTIVA` con cantidad, mínimo y sucursal | No hace nada |
+| `cantidad > minimo` | No hace nada | La pasa a `RESUELTA` y guarda `resuelta_en` |
+
+- Estados: `ACTIVA → VISTA → RESUELTA`, o `ACTIVA → RESUELTA` directo.
+- El índice único parcial `alerta_insumo_activa_unica` impide dos alertas sin resolver para el mismo insumo. La alerta se inserta con `ON CONFLICT … DO NOTHING`: si el índice la descarta, el movimiento sigue (una violación de unicidad atrapada dejaría abortada la transacción en PostgreSQL).
+- Al **crear** una alerta, después del commit, se avisa a los gerentes de la sucursal con `NotificacionesService.notificar` (BE-27.1), con correo y referencia `ALERTA_INSUMO`. Si el aviso falla, se registra en el log; la alerta y el movimiento ya quedaron guardados.
+
+### `GET /inventario/alertas`
+
+```jsonc
+// 200 OK — de la más reciente a la más antigua
+[{ "id": 9, "insumoId": 5, "insumo": "Masa de maíz", "cantidad": 18, "minimo": 20, "unidad": "lb", "estado": "ACTIVA", "creadaEn": "2026-11-18T14:05:00.000Z" }]
+```
+
+- Solo alertas `ACTIVA` y `VISTA` de la sucursal del usuario autenticado. `cantidad` y `minimo` son los del momento en que se creó la alerta.
+- Errores: `401` sin sesión; `403` si el rol no es `GERENTE` o el usuario no tiene sucursal.
+
+### `PATCH /inventario/alertas/:id/vista`
+
+- Pasa la alerta de `ACTIVA` a `VISTA` y guarda `vista_en`. Si ya estaba `VISTA`, responde `200` sin cambios. Devuelve la alerta con el mismo formato del listado; sigue apareciendo en el listado hasta que se resuelve.
+- Errores: `401`; `403` si el rol no es `GERENTE` o la alerta es de otra sucursal; `404` si no existe; `409` si ya está resuelta.
+
+---
+
 ## Dashboard de ventas (H28)
 
 Solo para `GERENTE_GENERAL`: el controlador usa `@Roles(Rol.GERENTE_GENERAL)` y el `RolesGuard` global responde `403` a cualquier otro rol.
@@ -643,6 +767,8 @@ Definidos en [tsconfig.json](tsconfig.json):
 | `@Health`, `@Health/*` | `src/health/…` |
 | `@Prisma`, `@Prisma/*` | `src/prisma/…` |
 | `@Cocina`, `@Cocina/*` | `src/cocina/…` |
+| `@Mesero`, `@Mesero/*` | `src/mesero/…` |
+| `@Inventario`, `@Inventario/*` | `src/inventario/…` |
 | `@Resenas`, `@Resenas/*` | `src/resenas/…` |
 | `@Common/*` | `src/common/*/index.ts` |
 | `@Config` | `src/config/index.ts` |
@@ -726,6 +852,23 @@ nest build && tsc-alias -p tsconfig.build.json
     │   ├── constants/            # Roles, estados en cocina, namespace y rooms
     │   ├── dto/                  # PedidoCocinaDto
     │   ├── cocina.module.ts
+    │   └── index.ts
+    ├── mesero/
+    │   ├── controllers/          # GET /mesero/items-listos, PATCH /mesero/items/:itemId/entregado
+    │   ├── services/             # EntregasService
+    │   ├── repositories/         # EntregasRepository (bloqueo de fila al entregar)
+    │   ├── errors/               # ItemYaEntregadoError, ItemNoListoError, PedidoCanceladoError
+    │   ├── dto/
+    │   ├── mesero.module.ts
+    │   └── index.ts
+    ├── inventario/
+    │   ├── controllers/          # Insumos, entradas, salidas e historial; alertas (H15)
+    │   ├── services/             # InventarioService, AlertasService y EvaluadorAlertasInventario
+    │   ├── repositories/         # InsumosRepository (bloqueo de fila) y AlertasInsumoRepository
+    │   ├── errors/               # InsumoDuplicadoError, ExistenciaInsuficienteError, AlertaResueltaError, …
+    │   ├── utils/                # Unidades, estado BAJO/NORMAL y límites
+    │   ├── dto/
+    │   ├── inventario.module.ts
     │   └── index.ts
     └── generated/prisma/         # Cliente de Prisma (ignorado en git)
 ```

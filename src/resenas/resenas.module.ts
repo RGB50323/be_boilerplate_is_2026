@@ -1,10 +1,31 @@
 import { Module } from '@nestjs/common';
-import { ResenasController } from './controllers/index.js';
+import {
+  ModeracionResenasController,
+  ReporteResenasController,
+  ResenasClienteController,
+  ResenasController,
+} from './controllers/index.js';
 import { ResenaRepository } from './repositories/index.js';
-import { ResenasService } from './services/index.js';
+import {
+  ModeracionResenasService,
+  ReporteResenasService,
+  ResenasClienteService,
+  ResenasService,
+} from './services/index.js';
 
 @Module({
-  controllers: [ResenasController],
-  providers: [ResenasService, ResenaRepository],
+  controllers: [
+    ResenasController,
+    ResenasClienteController,
+    ReporteResenasController,
+    ModeracionResenasController,
+  ],
+  providers: [
+    ResenasService,
+    ResenasClienteService,
+    ReporteResenasService,
+    ModeracionResenasService,
+    ResenaRepository,
+  ],
 })
 export class ResenasModule {}

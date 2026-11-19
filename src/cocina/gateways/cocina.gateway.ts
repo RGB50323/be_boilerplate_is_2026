@@ -8,13 +8,18 @@ import {
 } from '@nestjs/websockets';
 import type { Namespace, Socket } from 'socket.io';
 import { AuthService } from '@Auth/services';
-import { COCINA_NAMESPACE, ROLES_COCINA, salaSucursal } from '@Cocina/constants';
+import {
+  COCINA_NAMESPACE,
+  ROLES_COCINA,
+  salaSucursal,
+} from '@Cocina/constants';
 import {
   CocinaEvento,
   type CocinaServerToClientEvents,
   type PedidoCocinaEvento,
   type PedidoRetiradoEvento,
 } from '@Cocina/events';
+import { origenesPermitidos } from '../../config/cors.js';
 
 interface CocinaSocketData {
   userId: string;
@@ -36,7 +41,13 @@ type CocinaSocket = Socket<
   CocinaSocketData
 >;
 
-@WebSocketGateway({ namespace: COCINA_NAMESPACE })
+@WebSocketGateway({
+  namespace: COCINA_NAMESPACE,
+  cors: {
+    origin: origenesPermitidos(),
+    credentials: true,
+  },
+})
 export class CocinaGateway
   implements OnGatewayInit<CocinaNamespace>, OnGatewayConnection<CocinaSocket>
 {
@@ -52,7 +63,9 @@ export class CocinaGateway
       void this.autenticar(socket).then(
         () => next(),
         (error: unknown) =>
-          next(error instanceof Error ? error : new Error('Conexión rechazada.')),
+          next(
+            error instanceof Error ? error : new Error('Conexión rechazada.'),
+          ),
       );
     });
   }
@@ -73,7 +86,9 @@ export class CocinaGateway
 
   @OnEvent(CocinaEvento.PEDIDO_RETIRADO)
   emitirPedidoRetirado({ sucursalId, pedidoId }: PedidoRetiradoEvento): void {
-    this.server.to(salaSucursal(sucursalId)).emit('pedido:retirado', { id: pedidoId });
+    this.server
+      .to(salaSucursal(sucursalId))
+      .emit('pedido:retirado', { id: pedidoId });
   }
 
   @OnEvent(CocinaEvento.ITEM_LISTO)
@@ -86,6 +101,11 @@ export class CocinaGateway
     this.server.to(salaSucursal(sucursalId)).emit('pedido:listo', pedido);
   }
 
+  @OnEvent(CocinaEvento.PEDIDO_ENTREGADO)
+  emitirPedidoEntregado({ sucursalId, pedido }: PedidoCocinaEvento): void {
+    this.server.to(salaSucursal(sucursalId)).emit('pedido:entregado', pedido);
+  }
+
   private async autenticar(socket: CocinaSocket): Promise<void> {
     const token: unknown = socket.handshake.auth?.token;
     if (typeof token !== 'string' || token === '') {
@@ -95,7 +115,9 @@ export class CocinaGateway
     const user = await this.authService.authenticateAccessToken(token);
 
     if (!ROLES_COCINA.includes(user.rol)) {
-      this.logger.warn(`Conexión rechazada: el rol ${user.rol} no tiene acceso a cocina.`);
+      this.logger.warn(
+        `Conexión rechazada: el rol ${user.rol} no tiene acceso a cocina.`,
+      );
       throw new Error('No tenés permiso para acceder a cocina.');
     }
     if (user.sucursalId === null) {

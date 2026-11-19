@@ -43,6 +43,19 @@ export class RefreshTokenRepository {
   }
 
   /**
+   * Consume el token de forma atómica: solo una llamada puede revocarlo.
+   * Devuelve `false` si ya estaba revocado (otra petición lo usó antes).
+   */
+  consume(id: string): Promise<boolean> {
+    return this.prisma.refreshToken
+      .updateMany({
+        where: { id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      })
+      .then((result) => result.count === 1);
+  }
+
+  /**
    * Revoca por hash. Devuelve cuántas filas cambiaron.
    *
    * Usa `updateMany` con `revokedAt: null` en el filtro para que sea

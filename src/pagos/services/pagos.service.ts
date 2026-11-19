@@ -110,6 +110,8 @@ export class PagosService {
     }
 
     // H17 conserva el ticket validado al iniciar el pago.
+    // 8. Registrar el pago PENDIENTE junto con su ticket validado para que H17
+    // pueda emitir luego a partir de los datos aceptados al iniciar el pago.
     try {
       const pago = await this.pagoRepository.crear({
         pedidoId: ticket.id,

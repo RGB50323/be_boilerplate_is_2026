@@ -205,12 +205,13 @@ model Sucursal {
   direccion String?  @db.VarChar(200)
   creadoEn  DateTime @default(now()) @map("creado_en")
 
-  usuarios  User[]
-  platillos PlatilloSucursal[]
-  mesas     Mesa[]
-  pedidos   Pedido[]
-  horarios  HorarioSucursal[]
-  insumos   Insumo[]
+  usuarios      User[]
+  platillos     PlatilloSucursal[]
+  mesas         Mesa[]
+  pedidos       Pedido[]
+  horarios      HorarioSucursal[]
+  insumos       Insumo[]
+  alertasInsumo AlertaInsumo[]
 
   @@map("sucursal")
 }
@@ -268,6 +269,7 @@ model PlatilloSucursal {
   sucursalId     Int     @map("sucursal_id")
   precio         Decimal @db.Decimal(10, 2)
   disponibilidad Int     @default(0)
+  activo Boolean @default(true)
 
   platillo Platillo @relation(fields: [platilloId], references: [id], onDelete: Cascade)
   sucursal Sucursal @relation(fields: [sucursalId], references: [id])
@@ -430,6 +432,7 @@ model MovimientoInsumo {
 model AlertaInsumo {
   id         Int          @id @default(autoincrement())
   insumoId   Int          @map("insumo_id")
+  sucursalId Int          @map("sucursal_id")
   estado     EstadoAlerta @default(ACTIVA)
   cantidad   Decimal      @db.Decimal(12, 3)
   minimo     Decimal      @db.Decimal(12, 3)
@@ -437,9 +440,11 @@ model AlertaInsumo {
   vistaEn    DateTime?    @map("vista_en")
   resueltaEn DateTime?    @map("resuelta_en")
 
-  insumo Insumo @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+  insumo   Insumo   @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
 
   @@index([insumoId, estado])
+  @@index([sucursalId, estado])
   @@map("alerta_insumo")
 }
 

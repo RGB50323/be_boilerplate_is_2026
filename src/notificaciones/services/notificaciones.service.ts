@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { EstadoCorreo, ModuloOrigen, Rol } from '@PrismaClient';
+import { EstadoCorreo, ModuloOrigen, Rol, type Prisma } from '@PrismaClient';
 import { NotificacionRepository } from '@Notificaciones/repositories';
 import { ValidacionAvisoError } from '@Notificaciones/errors';
 import type {
@@ -41,9 +41,12 @@ export class NotificacionesService {
     private readonly retrasoReintentoCorreoMs: number,
   ) {}
 
-  async notificar(aviso: Aviso): Promise<ResultadoNotificacion> {
+  async notificar(
+    aviso: Aviso,
+    tx?: Prisma.TransactionClient,
+  ): Promise<ResultadoNotificacion> {
     const avisoValidado = this.validarAviso(aviso);
-    const destinatarios = await this.resolverDestinatarios(avisoValidado);
+    const destinatarios = await this.resolverDestinatarios(avisoValidado, tx);
 
     if (destinatarios.length === 0) {
       return { registradas: 0, omitidasPorDuplicado: 0 };
@@ -63,8 +66,17 @@ export class NotificacionesService {
           ? EstadoCorreo.PENDIENTE
           : null,
       })),
+      tx,
     );
 
+    // Con transacción el correo queda PENDIENTE: nunca se envía antes del commit
+    if (avisoValidado.enviarCorreo && registradas > 0 && tx) {
+      return {
+        registradas,
+        omitidasPorDuplicado: destinatarios.length - registradas,
+        correosPendientes: ids,
+      };
+    }
     if (avisoValidado.enviarCorreo && registradas > 0) {
       // Correo en segundo plano
       void this.procesarCorreos(ids);
@@ -74,6 +86,11 @@ export class NotificacionesService {
       registradas,
       omitidasPorDuplicado: destinatarios.length - registradas,
     };
+  }
+
+  // Envía los correos de avisos registrados en una transacción ya confirmada
+  enviarCorreosPendientes(ids: string[]): void {
+    if (ids.length > 0) void this.procesarCorreos(ids);
   }
 
   async listar(
@@ -99,16 +116,19 @@ export class NotificacionesService {
 
   private async resolverDestinatarios(
     aviso: Aviso,
+    tx?: Prisma.TransactionClient,
   ): Promise<DestinatarioResuelto[]> {
     if ('usuarioId' in aviso.destinatario) {
       // Usuario inexistente o inactivo: se omite
       return this.repository.resolverUsuarioActivo(
         aviso.destinatario.usuarioId as string,
+        tx,
       );
     }
     return this.repository.resolverGrupoActivo(
       aviso.destinatario.rol,
       aviso.destinatario.sucursalId,
+      tx,
     );
   }
 

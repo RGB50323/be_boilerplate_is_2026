@@ -79,6 +79,13 @@ describe('CocinaEventsService', () => {
     expect(emit).toHaveBeenCalledWith(CocinaEvento.PEDIDO_LISTO, { sucursalId: 2, pedido: dto });
   });
 
+  it('pedidoEntregado publica pedido:entregado para la sucursal del pedido', async () => {
+    await service.pedidoEntregado(9);
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith(CocinaEvento.PEDIDO_ENTREGADO, { sucursalId: 2, pedido: dto });
+  });
+
   it('ignora un pedido inexistente', async () => {
     findById.mockResolvedValue(null);
 

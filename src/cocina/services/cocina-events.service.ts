@@ -59,6 +59,19 @@ export class CocinaEventsService {
     this.publicarCambio(pedido);
   }
 
+  async pedidoEntregado(pedidoId: number): Promise<void> {
+    const pedido = await this.pedidoCocinaRepository.findById(pedidoId);
+    if (!pedido) {
+      this.logger.warn(`pedidoEntregado: no existe el pedido ${pedidoId}.`);
+      return;
+    }
+
+    this.eventEmitter.emit(CocinaEvento.PEDIDO_ENTREGADO, {
+      sucursalId: pedido.sucursalId,
+      pedido: this.cocinaService.toDto(pedido),
+    } satisfies PedidoCocinaEvento);
+  }
+
   private publicarCambio(pedido: PedidoCocina): void {
     if (this.cocinaService.esVisibleEnCocina(pedido)) {
       this.eventEmitter.emit(CocinaEvento.PEDIDO_ACTUALIZADO, {

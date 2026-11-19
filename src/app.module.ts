@@ -3,9 +3,12 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { PagosModule } from '@Pagos';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from '@Auth';
 import { JwtAuthGuard, RolesGuard } from '@Auth/guards';
 import { CocinaModule } from '@Cocina';
+import { MeseroModule } from '@Mesero';
+import { InventarioModule } from '@Inventario';
 import { HealthModule } from '@Health';
 import { PrismaModule } from '@Prisma';
 import { ReservacionesModule } from '@Reservaciones';
@@ -18,6 +21,7 @@ import { CategoriasModule } from '@Categorias';
 import { PlatillosModule } from '@Platillos';
 import { PedidosModule } from '@Pedidos';
 import { ResenasModule } from '@Resenas';
+import { OcupacionModule } from '@Ocupacion';
 
 @Module({
   imports: [
@@ -28,6 +32,8 @@ import { ResenasModule } from '@Resenas';
       validate: validateEnv,
     }),
     EventEmitterModule.forRoot(),
+    // Procesos programados (recordatorios de reservación)
+    ScheduleModule.forRoot(),
     PrismaModule,
     HealthModule,
     UsersModule,
@@ -38,10 +44,13 @@ import { ResenasModule } from '@Resenas';
     PagosModule,
     DashboardModule,
     CocinaModule,
+    MeseroModule,
+    InventarioModule,
     CategoriasModule,
     PlatillosModule,
     PedidosModule,
     ResenasModule,
+    OcupacionModule,
   ],
   providers: [
     {

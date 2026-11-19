@@ -6,6 +6,7 @@ import { AppModule } from './app.module.js';
 import type { EnvConfig } from '@Config';
 import { join } from 'node:path';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { origenesPermitidos } from './config/cors.js';
 
 const API_PREFIX = 'api/v1';
 
@@ -15,6 +16,11 @@ async function bootstrap() {
 
   // Versionado en la URI: /api/v1/...
   app.setGlobalPrefix(API_PREFIX);
+
+  app.enableCors({
+    origin: origenesPermitidos(),
+    credentials: true,
+  });
 
   app.useGlobalPipes(new ApiValidationPipe());
 

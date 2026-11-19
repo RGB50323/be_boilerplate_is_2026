@@ -4,7 +4,9 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ReservacionRepository } from '@Reservaciones/repositories';
+import { OcupacionEvento } from '../../ocupacion/events/ocupacion.events.js';
 import type {
   ConsultarDisponibilidadDto,
   CrearReservacionDto,
@@ -18,10 +20,21 @@ import {
   validarHorarioReservacion,
 } from '../utils/horario-reservacion.js';
 import { paginar } from '@Common/paginacion';
+import { AvisosReservacionService } from './avisos-reservacion.service.js';
+
+import {
+  resumenReservacion,
+  horarioRespuesta,
+  mesaDisponibleRespuesta,
+} from '../utils/reservacion-respuesta.js';
 
 @Injectable()
 export class ReservacionesService {
-  constructor(private readonly reservacionRepository: ReservacionRepository) {}
+  constructor(
+    private readonly reservacionRepository: ReservacionRepository,
+    private readonly avisos: AvisosReservacionService,
+    private readonly eventEmitter?: EventEmitter2,
+  ) {}
 
   async crear(
     clienteId: string,
@@ -62,6 +75,11 @@ export class ReservacionesService {
       throw new ConflictException(
         'La mesa ya no está disponible en ese horario. Elegí otra mesa.',
       );
+    await this.avisos.creada(reservacion.id);
+    this.eventEmitter?.emit(OcupacionEvento.RESERVACION_CAMBIADA, {
+      sucursalId: mesa.sucursalId,
+      fecha: datos.fecha,
+    });
     return this.respuesta(reservacion);
   }
 
@@ -81,21 +99,7 @@ export class ReservacionesService {
       Awaited<ReturnType<ReservacionRepository['crearConfirmada']>>
     >,
   ): ReservacionResponseDto {
-    // El almacenamiento es UTC; la respuesta utiliza la misma hora local de H09.
-    const local = new Date(
-      reservacion.inicio.getTime() - 6 * 60 * 60_000,
-    ).toISOString();
-    return {
-      reservacionId: `R-${String(reservacion.id).padStart(6, '0')}`,
-      estado: reservacion.estado,
-      mesaId: reservacion.mesaId,
-      mesa: reservacion.mesa.numero,
-      sucursalId: reservacion.mesa.sucursalId,
-      sucursal: reservacion.mesa.sucursal.nombre,
-      fecha: local.slice(0, 10),
-      hora: local.slice(11, 16),
-      personas: reservacion.personas,
-    };
+    return resumenReservacion(reservacion);
   }
 
   async listarSucursales(): Promise<SucursalResponseDto[]> {
@@ -104,13 +108,7 @@ export class ReservacionesService {
     return sucursales.map(({ id, nombre, horarios }) => ({
       id,
       nombre,
-      horarios: horarios.map(({ diaSemana, apertura, cierre }) => ({
-        diaSemana,
-        // Prisma representa TIME con Date. Se conserva la hora local del seed,
-        // sin exponer la fecha auxiliar ni aplicar otro desplazamiento horario.
-        apertura: apertura.toISOString().slice(11, 16),
-        cierre: cierre.toISOString().slice(11, 16),
-      })),
+      horarios: horarios.map(horarioRespuesta),
     }));
   }
 
@@ -143,11 +141,6 @@ export class ReservacionesService {
       inicio,
       fin,
     });
-    return mesas.map(({ id, numero, capacidad, zona }) => ({
-      mesaId: id,
-      numero,
-      capacidad,
-      zona,
-    }));
+    return mesas.map(mesaDisponibleRespuesta);
   }
 }

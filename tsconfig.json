@@ -53,6 +53,10 @@
       "@Prisma/*": ["./src/prisma/*/index.ts"],
       "@Cocina": ["./src/cocina/index.ts"],
       "@Cocina/*": ["./src/cocina/*/index.ts"],
+      "@Mesero": ["./src/mesero/index.ts"],
+      "@Mesero/*": ["./src/mesero/*/index.ts"],
+      "@Inventario": ["./src/inventario/index.ts"],
+      "@Inventario/*": ["./src/inventario/*/index.ts"],
       "@Common/*": ["./src/common/*/index.ts"],
       "@Config": ["./src/config/index.ts"],
       "@PrismaClient": ["./src/generated/prisma/client.ts"],
@@ -66,6 +70,8 @@
       "@Pedidos/*": ["./src/pedidos/*/index.ts"],
       "@Resenas": ["./src/resenas/index.ts"],
       "@Resenas/*": ["./src/resenas/*/index.ts"],
+      "@Ocupacion": ["./src/ocupacion/index.ts"],
+      "@Ocupacion/*": ["./src/ocupacion/*/index.ts"]
     }
   }
 }
