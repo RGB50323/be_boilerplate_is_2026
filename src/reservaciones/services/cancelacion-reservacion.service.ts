@@ -3,7 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EdicionReservacionRepository } from '@Reservaciones/repositories';
+import { OcupacionEvento } from '../../ocupacion/events/ocupacion.events.js';
 import { AvisosReservacionService } from './avisos-reservacion.service.js';
 import { resumenReservacion } from '../utils/reservacion-respuesta.js';
 
@@ -12,6 +14,7 @@ export class CancelacionReservacionService {
   constructor(
     private readonly repository: EdicionReservacionRepository,
     private readonly avisos: AvisosReservacionService,
+    private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   async cancelar(codigo: string, clienteId: string) {
@@ -47,6 +50,10 @@ export class CancelacionReservacionService {
       },
     );
     this.avisos.enviarCorreos(correos);
+    this.eventEmitter?.emit(OcupacionEvento.RESERVACION_CAMBIADA, {
+      sucursalId: resultado.sucursalId,
+      fecha: resultado.fecha,
+    });
     return resultado;
   }
 }

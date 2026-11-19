@@ -4,7 +4,9 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ReservacionRepository } from '@Reservaciones/repositories';
+import { OcupacionEvento } from '../../ocupacion/events/ocupacion.events.js';
 import type {
   ConsultarDisponibilidadDto,
   CrearReservacionDto,
@@ -31,6 +33,7 @@ export class ReservacionesService {
   constructor(
     private readonly reservacionRepository: ReservacionRepository,
     private readonly avisos: AvisosReservacionService,
+    private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   async crear(
@@ -73,6 +76,10 @@ export class ReservacionesService {
         'La mesa ya no está disponible en ese horario. Elegí otra mesa.',
       );
     await this.avisos.creada(reservacion.id);
+    this.eventEmitter?.emit(OcupacionEvento.RESERVACION_CAMBIADA, {
+      sucursalId: mesa.sucursalId,
+      fecha: datos.fecha,
+    });
     return this.respuesta(reservacion);
   }
 

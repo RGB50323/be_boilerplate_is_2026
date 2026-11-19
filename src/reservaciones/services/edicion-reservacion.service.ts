@@ -4,12 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   EdicionReservacionRepository,
   ReservacionRepository,
   MesaNoDisponibleError,
   type ReservaEditable,
 } from '@Reservaciones/repositories';
+import { OcupacionEvento } from '../../ocupacion/events/ocupacion.events.js';
 import type { ModificarReservacionDto } from '@Reservaciones/dto';
 import type { ConsultarDisponibilidadDto } from '@Reservaciones/dto';
 import {
@@ -30,6 +32,7 @@ export class EdicionReservacionService {
     private readonly repository: EdicionReservacionRepository,
     private readonly avisos: AvisosReservacionService,
     private readonly disponibilidad: ReservacionRepository,
+    private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   private id(valor: string) {
@@ -169,6 +172,10 @@ export class EdicionReservacionService {
       );
       // El correo sale solo después del commit
       this.avisos.enviarCorreos(correos);
+      this.eventEmitter?.emit(OcupacionEvento.RESERVACION_CAMBIADA, {
+        sucursalId: respuesta.sucursalId,
+        fecha: datos.fecha,
+      });
       return respuesta;
     } catch (error) {
       if (error instanceof MesaNoDisponibleError) {
