@@ -167,7 +167,7 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
   it('retoma una tarjeta persistida tras reiniciar y dos trabajadores emiten un solo comprobante', async () => {
     const mesa = await pedido(TipoPedido.MESA);
     const datos = solicitud(mesa.id);
-    vi.stubEnv('H16_SIMULADOR_RETRASO_MS', '2000');
+    vi.stubEnv('H16_SIMULADOR_RETRASO_MS', undefined);
     vi.stubEnv('H16_SIMULADOR_RESULTADO', 'CONFIRMADO');
     try {
       const inicio = await pagos.procesarPago(datos, gerente);
@@ -187,7 +187,7 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
       });
       await prisma.pago.update({
         where: { id: inicio.pagoId },
-        data: { creadoEn: new Date(persistido.creadoEn.getTime() - 5000) },
+        data: { creadoEn: new Date(persistido.creadoEn.getTime() - 11000) },
       });
       const reiniciado = new PagosService(
         new PagoRepository(prisma as PrismaService, comprobantes),
@@ -212,11 +212,15 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
         comprobanteId: expect.any(Number),
       });
       const id = recuperado.comprobanteId!;
-      const antes = await prisma.comprobante.findUniqueOrThrow({ where: { id } });
+      const antes = await prisma.comprobante.findUniqueOrThrow({
+        where: { id },
+      });
       expect(antes.primeraGeneracionPdfEn).toBeNull();
       const { buffer } = await comprobantes.descargarPdf(id, gerente);
       expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
-      const despues = await prisma.comprobante.findUniqueOrThrow({ where: { id } });
+      const despues = await prisma.comprobante.findUniqueOrThrow({
+        where: { id },
+      });
       expect(despues.primeraGeneracionPdfEn).toBeInstanceOf(Date);
       expect(await prisma.pago.count({ where: { pedidoId: mesa.id } })).toBe(1);
     } finally {

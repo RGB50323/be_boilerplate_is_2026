@@ -137,7 +137,7 @@ export class PagoRepository {
       },
       orderBy: { id: 'asc' },
       take: 50,
-      select: { id: true, transaccionId: true },
+      select: { id: true, transaccionId: true, creadoEn: true, estado: true },
     });
   }
 

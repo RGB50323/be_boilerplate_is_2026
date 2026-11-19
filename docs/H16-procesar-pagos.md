@@ -81,9 +81,11 @@ Un cuerpo anterior con solo `solicitudId` y `ticket` sigue usando la tarjeta sim
 
 ## Resolución automática de tarjetas
 
-El POST mantiene su respuesta inicial `PENDIENTE`. Un trabajador de H16 consulta PostgreSQL al arrancar y cada 500 ms. Resuelve las tarjetas persistidas cuya antigüedad supera `H16_SIMULADOR_RETRASO_MS` (2000 ms por defecto). La resolución continúa aunque se cierre el navegador y los pendientes se recuperan al reiniciar el proceso. La transición condicional en PostgreSQL permite que solo una instancia confirme y emita el comprobante.
+El POST devuelve `PENDIENTE` inmediatamente. Cada tarjeta vence entre 5000 y 10000 ms después de `Pago.creadoEn`. El UUID aleatorio que el simulador genera al iniciar el pago fija ese retraso mediante una función determinista. El trabajador reconstruye el mismo vencimiento a partir de `transaccionId` y `creadoEn`, que ya se conservan en PostgreSQL.
 
-Por defecto, el resultado automático es `CONFIRMADO`. Con `NODE_ENV=test`, `H16_SIMULADOR_RESULTADO` admite `CONFIRMADO`, `RECHAZADO` o `PENDIENTE`. Fuera de ese entorno se ignora. El cliente y el mesero consultan el resultado por las rutas existentes. El PATCH sigue reservado a gerencia para pruebas y operaciones controladas.
+El trabajador consulta PostgreSQL al arrancar y cada 500 ms. Resuelve las tarjetas vencidas aunque se cierre el navegador y retoma los pendientes al reiniciarse. La resolución ocurre en una consulta posterior al vencimiento. Una transición condicional permite que solo una instancia confirme y emita el comprobante.
+
+Por defecto, el resultado automático es `CONFIRMADO`. Con `NODE_ENV=test`, `H16_SIMULADOR_RETRASO_MS` permite fijar la demora y `H16_SIMULADOR_RESULTADO` admite `CONFIRMADO`, `RECHAZADO` o `PENDIENTE`. Fuera de ese entorno se ignoran ambas variables. El cliente y el mesero consultan el resultado por las rutas existentes. El PATCH sigue reservado a gerencia para pruebas y operaciones controladas.
 
 Si la confirmación de LLEVAR qued? guardada pero falló su paso a `RECIBIDO`, el trabajador reintenta H05 sin volver a cobrar ni emitir otro comprobante. Los pendientes históricos sin método TARJETA explícito o sin snapshot quedan fuera de la resolución automática.
 

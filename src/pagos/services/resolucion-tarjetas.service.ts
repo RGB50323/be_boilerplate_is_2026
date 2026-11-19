@@ -4,19 +4,34 @@ import {
   type OnApplicationBootstrap,
   type OnModuleDestroy,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { EstadoPago } from '@PrismaClient';
 import { PagoRepository } from '../repositories/pago.repository.js';
 import { PagosService } from './pagos.service.js';
 import { EstadoTransaccionSimulada } from './pasarela-simulada.service.js';
 
 const INTERVALO_MS = 500;
-const RETRASO_PREDETERMINADO_MS = 2000;
+const RETRASO_MINIMO_MS = 5000;
+const RETRASO_MAXIMO_MS = 10000;
+
+function retrasoPorTransaccion(transaccionId: string): number {
+  // La pasarela genera un ID aleatorio una sola vez. Su valor persistido fija
+  // el retraso, con el mismo resultado en cada consulta e instancia.
+  const semilla = createHash('sha256')
+    .update(transaccionId)
+    .digest()
+    .readUInt32BE();
+  return (
+    RETRASO_MINIMO_MS + (semilla % (RETRASO_MAXIMO_MS - RETRASO_MINIMO_MS + 1))
+  );
+}
 
 @Injectable()
 export class ResolucionTarjetasService
   implements OnApplicationBootstrap, OnModuleDestroy
 {
   private readonly logger = new Logger(ResolucionTarjetasService.name);
-  private readonly retrasoMs = this.leerRetraso();
+  private readonly retrasoPruebasMs = this.leerRetrasoPruebas();
   private readonly resultado = this.leerResultado();
   private cursor = 0;
   private activo = false;
@@ -54,7 +69,10 @@ export class ResolucionTarjetasService
 
   async procesarLote() {
     if (this.resultado === EstadoTransaccionSimulada.PENDIENTE) return;
-    const limite = new Date(Date.now() - this.retrasoMs);
+    const ahora = Date.now();
+    const limite = new Date(
+      ahora - (this.retrasoPruebasMs ?? RETRASO_MINIMO_MS),
+    );
     const pagos = await this.repository.buscarResolucionesSimuladas(
       limite,
       this.cursor,
@@ -64,6 +82,11 @@ export class ResolucionTarjetasService
     for (const pago of pagos) {
       this.cursor = pago.id;
       if (!pago.transaccionId) continue;
+      if (pago.estado === EstadoPago.PENDIENTE) {
+        const retraso =
+          this.retrasoPruebasMs ?? retrasoPorTransaccion(pago.transaccionId);
+        if (pago.creadoEn.getTime() + retraso > ahora) continue;
+      }
       try {
         await this.pagos.resolverTarjetaSimulada(
           pago.transaccionId,
@@ -75,9 +98,10 @@ export class ResolucionTarjetasService
     }
   }
 
-  private leerRetraso() {
+  private leerRetrasoPruebas() {
+    if (process.env.NODE_ENV !== 'test') return undefined;
     const valor = process.env.H16_SIMULADOR_RETRASO_MS;
-    if (valor === undefined) return RETRASO_PREDETERMINADO_MS;
+    if (valor === undefined) return undefined;
     const ms = Number(valor);
     if (
       !/^\d+$/.test(valor) ||

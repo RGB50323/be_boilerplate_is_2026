@@ -25,18 +25,23 @@ describe('ResolucionTarjetasService', () => {
     vi.useRealTimers();
   });
 
-  it('lee pendientes vencidos con el retraso predeterminado y confirma al arrancar', async () => {
+  it('lee pendientes vencidos y confirma al arrancar', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-11-19T12:00:00Z'));
     buscarResolucionesSimuladas.mockResolvedValue([
-      { id: 1, transaccionId: 't-1' },
+      {
+        id: 1,
+        transaccionId: 't-1',
+        estado: 'PENDIENTE',
+        creadoEn: new Date('2026-11-19T11:59:50Z'),
+      },
     ]);
     const servicio = trabajador();
     servicio.onApplicationBootstrap();
     try {
       await vi.advanceTimersByTimeAsync(0);
       expect(buscarResolucionesSimuladas).toHaveBeenCalledWith(
-        new Date('2026-11-19T11:59:58Z'),
+        new Date('2026-11-19T11:59:55Z'),
         0,
       );
       expect(resolverTarjetaSimulada).toHaveBeenCalledWith(
@@ -48,6 +53,49 @@ describe('ResolucionTarjetasService', () => {
     }
     await vi.advanceTimersByTimeAsync(5000);
     expect(buscarResolucionesSimuladas).toHaveBeenCalledOnce();
+  });
+
+  it('reconstruye plazos distintos y estables después de reiniciar', async () => {
+    vi.useFakeTimers();
+    const creadoEn = new Date('2026-11-19T12:00:00Z');
+    buscarResolucionesSimuladas.mockResolvedValue([
+      { id: 1, transaccionId: 't-1', estado: 'PENDIENTE', creadoEn },
+      { id: 2, transaccionId: 't-2', estado: 'PENDIENTE', creadoEn },
+    ]);
+    vi.setSystemTime(creadoEn.getTime() + 5290);
+    await trabajador().procesarLote();
+    expect(resolverTarjetaSimulada).not.toHaveBeenCalled();
+    vi.setSystemTime(creadoEn.getTime() + 5291);
+    await trabajador().procesarLote();
+    expect(resolverTarjetaSimulada).toHaveBeenCalledExactlyOnceWith(
+      't-1',
+      EstadoTransaccionSimulada.CONFIRMADO,
+    );
+    resolverTarjetaSimulada.mockClear();
+    vi.setSystemTime(creadoEn.getTime() + 9841);
+    await trabajador().procesarLote();
+    expect(resolverTarjetaSimulada.mock.calls.map(([id]) => id)).toEqual([
+      't-1',
+      't-2',
+    ]);
+  });
+
+  it('permite una demora fija solo en pruebas', async () => {
+    vi.stubEnv('H16_SIMULADOR_RETRASO_MS', '0');
+    buscarResolucionesSimuladas.mockResolvedValue([
+      {
+        id: 1,
+        transaccionId: 't-1',
+        estado: 'PENDIENTE',
+        creadoEn: new Date(),
+      },
+    ]);
+    await trabajador().procesarLote();
+    expect(resolverTarjetaSimulada).toHaveBeenCalledOnce();
+    resolverTarjetaSimulada.mockClear();
+    vi.stubEnv('NODE_ENV', 'production');
+    await trabajador().procesarLote();
+    expect(resolverTarjetaSimulada).not.toHaveBeenCalled();
   });
 
   it.each(['RECHAZADO', 'PENDIENTE'])(
