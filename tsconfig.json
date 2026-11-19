@@ -70,6 +70,8 @@
       "@Pedidos/*": ["./src/pedidos/*/index.ts"],
       "@Resenas": ["./src/resenas/index.ts"],
       "@Resenas/*": ["./src/resenas/*/index.ts"],
+      "@Ocupacion": ["./src/ocupacion/index.ts"],
+      "@Ocupacion/*": ["./src/ocupacion/*/index.ts"]
     }
   }
 }

@@ -21,6 +21,7 @@ import { CategoriasModule } from '@Categorias';
 import { PlatillosModule } from '@Platillos';
 import { PedidosModule } from '@Pedidos';
 import { ResenasModule } from '@Resenas';
+import { OcupacionModule } from '@Ocupacion';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { ResenasModule } from '@Resenas';
     PlatillosModule,
     PedidosModule,
     ResenasModule,
+    OcupacionModule,
   ],
   providers: [
     {

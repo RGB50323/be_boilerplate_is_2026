@@ -4,16 +4,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   EdicionReservacionRepository,
   ReservacionRepository,
   MesaNoDisponibleError,
   type ReservaEditable,
 } from '@Reservaciones/repositories';
+import { OcupacionEvento } from '../../ocupacion/events/ocupacion.events.js';
 import type { ModificarReservacionDto } from '@Reservaciones/dto';
 import type { ConsultarDisponibilidadDto } from '@Reservaciones/dto';
 import {
   diaDeReserva,
+  fechaHoraLocal,
   validarHorarioReservacion,
 } from '../utils/horario-reservacion.js';
 
@@ -30,6 +33,7 @@ export class EdicionReservacionService {
     private readonly repository: EdicionReservacionRepository,
     private readonly avisos: AvisosReservacionService,
     private readonly disponibilidad: ReservacionRepository,
+    private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   private id(valor: string) {
@@ -104,7 +108,7 @@ export class EdicionReservacionService {
   ) {
     let correos: string[] = [];
     try {
-      const respuesta = await this.repository.editar(
+      const resultado = await this.repository.editar(
         this.id(id),
         clienteId,
         async (reserva, tx) => {
@@ -146,7 +150,10 @@ export class EdicionReservacionService {
             reserva.inicio.getTime() === inicio.getTime() &&
             reserva.fin.getTime() === fin.getTime()
           ) {
-            return this.respuesta(reserva);
+            return {
+              respuesta: this.respuesta(reserva),
+              fechaAnterior: fechaHoraLocal(reserva.inicio).fecha,
+            };
           }
           const actualizada = await this.repository.guardar(
             reserva.id,
@@ -164,12 +171,25 @@ export class EdicionReservacionService {
           const respuesta = this.respuesta(actualizada);
           // El aviso y la modificación se confirman juntos; un fallo conserva los datos originales.
           correos = await this.avisos.registrarModificada(actualizada, tx);
-          return respuesta;
+          return {
+            respuesta,
+            fechaAnterior: fechaHoraLocal(reserva.inicio).fecha,
+          };
         },
       );
       // El correo sale solo después del commit
       this.avisos.enviarCorreos(correos);
-      return respuesta;
+      this.eventEmitter?.emit(OcupacionEvento.RESERVACION_CAMBIADA, {
+        sucursalId: resultado.respuesta.sucursalId,
+        fecha: resultado.fechaAnterior,
+      });
+      if (resultado.fechaAnterior !== resultado.respuesta.fecha) {
+        this.eventEmitter?.emit(OcupacionEvento.RESERVACION_CAMBIADA, {
+          sucursalId: resultado.respuesta.sucursalId,
+          fecha: resultado.respuesta.fecha,
+        });
+      }
+      return resultado.respuesta;
     } catch (error) {
       if (error instanceof MesaNoDisponibleError) {
         throw new ConflictException({
