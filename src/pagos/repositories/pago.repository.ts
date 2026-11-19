@@ -73,16 +73,19 @@ export class PagoRepository {
     return this.prisma.$transaction(async (tx) => {
       const { pedidoActualizadoEn, ...datosPago } = data;
       const [pedido] = await tx.$queryRaw<
-        { actualizadoEn: Date; estado: EstadoPedido }[]
+        { actualizadoEn: Date; estado: EstadoPedido; tipo: TipoPedido }[]
       >(Prisma.sql`
-        SELECT actualizado_en AS "actualizadoEn", estado::text AS estado
+        SELECT actualizado_en AS "actualizadoEn", estado::text AS estado, tipo::text AS tipo
         FROM pedido WHERE id = ${data.pedidoId} FOR NO KEY UPDATE
       `);
+      const estadoCobrable =
+        pedido?.tipo === TipoPedido.MESA
+          ? EstadoPedido.ENTREGADO
+          : EstadoPedido.PENDIENTE_PAGO;
       if (
         !pedido ||
         pedido.actualizadoEn.getTime() !== pedidoActualizadoEn.getTime() ||
-        (pedido.estado !== EstadoPedido.ENTREGADO &&
-          pedido.estado !== EstadoPedido.PENDIENTE_PAGO)
+        pedido.estado !== estadoCobrable
       ) {
         throw new ConflictException('El pedido cambió durante el cobro');
       }
@@ -111,7 +114,34 @@ export class PagoRepository {
     });
   }
 
-  // Consultar una transacción por su identificador
+  buscarResolucionesSimuladas(venceEn: Date, despuesDe: number) {
+    return this.prisma.pago.findMany({
+      where: {
+        id: { gt: despuesDe },
+        metodo: 'TARJETA',
+        transaccionId: { not: null },
+        OR: [
+          {
+            estado: EstadoPago.PENDIENTE,
+            creadoEn: { lte: venceEn },
+            ticketSnapshot: { not: Prisma.DbNull },
+          },
+          {
+            estado: EstadoPago.CONFIRMADO,
+            pedido: {
+              tipo: TipoPedido.LLEVAR,
+              estado: EstadoPedido.PENDIENTE_PAGO,
+            },
+          },
+        ],
+      },
+      orderBy: { id: 'asc' },
+      take: 50,
+      select: { id: true, transaccionId: true },
+    });
+  }
+
+  // Consultar una transacci?n por su identificador
   buscarPorTransaccion(transaccionId: string) {
     return this.prisma.pago.findUnique({
       where: { transaccionId },

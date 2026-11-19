@@ -79,6 +79,14 @@ Para MESA se aplican los permisos y el estado indicados arriba. Para LLEVAR, el 
 
 Un cuerpo anterior con solo `solicitudId` y `ticket` sigue usando la tarjeta simulada y guarda `detallePago: null`. Un intento rechazado admite otro cobro con un **nuevo** `solicitudId`. Repetir la misma solicitud recupera el intento original. Cambiar pedido, importe, método, datos de cobro o líneas de un ticket con snapshot bajo el mismo identificador devuelve 409.
 
+## Resolución automática de tarjetas
+
+El POST mantiene su respuesta inicial `PENDIENTE`. Un trabajador de H16 consulta PostgreSQL al arrancar y cada 500 ms. Resuelve las tarjetas persistidas cuya antigüedad supera `H16_SIMULADOR_RETRASO_MS` (2000 ms por defecto). La resolución continúa aunque se cierre el navegador y los pendientes se recuperan al reiniciar el proceso. La transición condicional en PostgreSQL permite que solo una instancia confirme y emita el comprobante.
+
+Por defecto, el resultado automático es `CONFIRMADO`. Con `NODE_ENV=test`, `H16_SIMULADOR_RESULTADO` admite `CONFIRMADO`, `RECHAZADO` o `PENDIENTE`. Fuera de ese entorno se ignora. El cliente y el mesero consultan el resultado por las rutas existentes. El PATCH sigue reservado a gerencia para pruebas y operaciones controladas.
+
+Si la confirmación de LLEVAR qued? guardada pero falló su paso a `RECIBIDO`, el trabajador reintenta H05 sin volver a cobrar ni emitir otro comprobante. Los pendientes históricos sin método TARJETA explícito o sin snapshot quedan fuera de la resolución automática.
+
 ## Consultar y confirmar
 
 - `GET /api/v1/pagos/transaccion/:transaccionId` devuelve 200, el estado registrado y `comprobanteId`. Pueden usarlo gerencia y, para pedidos MESA, un mesero de la misma sucursal.

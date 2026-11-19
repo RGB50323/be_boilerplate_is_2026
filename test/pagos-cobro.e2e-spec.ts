@@ -15,6 +15,7 @@ import { ComprobantesRepository } from '../src/comprobantes/repositories/comprob
 import { ComprobantePdfGenerator } from '../src/comprobantes/services/comprobante-pdf.generator.js';
 import { ComprobantesService } from '../src/comprobantes/services/comprobantes.service.js';
 import { PagoRepository } from '../src/pagos/repositories/pago.repository.js';
+import { ResolucionTarjetasService } from '../src/pagos/services/resolucion-tarjetas.service.js';
 import { PagosService } from '../src/pagos/services/pagos.service.js';
 import {
   EstadoTransaccionSimulada,
@@ -30,6 +31,7 @@ const databaseUrl = process.env.PAGOS_TEST_DATABASE_URL;
 describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
   let prisma: PrismaClient;
   let pagos: PagosService;
+  let repositorio: PagoRepository;
   let comprobantes: ComprobantesService;
   let llevar: PedidosLlevarService;
   let sucursalId: number;
@@ -55,8 +57,9 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
       new PedidosLlevarRepository(db),
       {} as PedidosService,
     );
+    repositorio = new PagoRepository(db, comprobantes);
     pagos = new PagosService(
-      new PagoRepository(db, comprobantes),
+      repositorio,
       new PasarelaSimuladaService(),
       llevar,
     );
@@ -160,6 +163,161 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
   const gerente = { rol: Rol.GERENTE_GENERAL } as Parameters<
     PagosService['procesarPago']
   >[1];
+
+  it('retoma una tarjeta persistida tras reiniciar y dos trabajadores emiten un solo comprobante', async () => {
+    const mesa = await pedido(TipoPedido.MESA);
+    const datos = solicitud(mesa.id);
+    vi.stubEnv('H16_SIMULADOR_RETRASO_MS', '2000');
+    vi.stubEnv('H16_SIMULADOR_RESULTADO', 'CONFIRMADO');
+    try {
+      const inicio = await pagos.procesarPago(datos, gerente);
+      expect(inicio).toMatchObject({
+        estado: EstadoPago.PENDIENTE,
+        comprobanteId: null,
+      });
+      const primerProceso = new ResolucionTarjetasService(repositorio, pagos);
+      await primerProceso.procesarLote();
+      expect(
+        (await prisma.pago.findUniqueOrThrow({ where: { id: inicio.pagoId } }))
+          .estado,
+      ).toBe(EstadoPago.PENDIENTE);
+
+      const persistido = await prisma.pago.findUniqueOrThrow({
+        where: { id: inicio.pagoId },
+      });
+      await prisma.pago.update({
+        where: { id: inicio.pagoId },
+        data: { creadoEn: new Date(persistido.creadoEn.getTime() - 5000) },
+      });
+      const reiniciado = new PagosService(
+        new PagoRepository(prisma as PrismaService, comprobantes),
+        new PasarelaSimuladaService(),
+        llevar,
+      );
+      await Promise.all([
+        new ResolucionTarjetasService(repositorio, reiniciado).procesarLote(),
+        new ResolucionTarjetasService(repositorio, pagos).procesarLote(),
+      ]);
+      expect(
+        (await prisma.pedido.findUniqueOrThrow({ where: { id: mesa.id } }))
+          .estado,
+      ).toBe(EstadoPedido.CERRADO);
+      expect(
+        await prisma.comprobante.count({ where: { ticketId: mesa.id } }),
+      ).toBe(1);
+      const recuperado = await reiniciado.procesarPago(datos, gerente);
+      expect(recuperado).toMatchObject({
+        pagoId: inicio.pagoId,
+        estado: EstadoPago.CONFIRMADO,
+        comprobanteId: expect.any(Number),
+      });
+      const id = recuperado.comprobanteId!;
+      const antes = await prisma.comprobante.findUniqueOrThrow({ where: { id } });
+      expect(antes.primeraGeneracionPdfEn).toBeNull();
+      const { buffer } = await comprobantes.descargarPdf(id, gerente);
+      expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+      const despues = await prisma.comprobante.findUniqueOrThrow({ where: { id } });
+      expect(despues.primeraGeneracionPdfEn).toBeInstanceOf(Date);
+      expect(await prisma.pago.count({ where: { pedidoId: mesa.id } })).toBe(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('rechaza automaticamente una tarjeta en pruebas y permite un nuevo intento', async () => {
+    vi.stubEnv('H16_SIMULADOR_RESULTADO', 'RECHAZADO');
+    vi.stubEnv('H16_SIMULADOR_RETRASO_MS', '0');
+    try {
+      const mesa = await pedido(TipoPedido.MESA);
+      const inicio = await pagos.procesarPago(solicitud(mesa.id), gerente);
+      await new ResolucionTarjetasService(repositorio, pagos).procesarLote();
+      expect(
+        await pagos.consultarTransaccion(inicio.transaccionId!, gerente),
+      ).toMatchObject({
+        estado: EstadoPago.RECHAZADO,
+        comprobanteId: null,
+      });
+      expect(
+        (await prisma.pedido.findUniqueOrThrow({ where: { id: mesa.id } }))
+          .estado,
+      ).toBe(EstadoPedido.ENTREGADO);
+      expect(
+        await prisma.comprobante.count({ where: { ticketId: mesa.id } }),
+      ).toBe(0);
+      const nuevo = await pagos.procesarPago(solicitud(mesa.id), gerente);
+      expect(nuevo.pagoId).not.toBe(inicio.pagoId);
+      // El intento nuevo se conserva para el escenario PENDIENTE de pruebas.
+      vi.stubEnv('H16_SIMULADOR_RESULTADO', 'PENDIENTE');
+      await new ResolucionTarjetasService(repositorio, pagos).procesarLote();
+      expect(
+        await pagos.consultarTransaccion(nuevo.transaccionId!, gerente),
+      ).toMatchObject({
+        estado: EstadoPago.PENDIENTE,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('reintenta H05 desde un trabajador nuevo cuando su primer llamado falla', async () => {
+    vi.stubEnv('H16_SIMULADOR_RETRASO_MS', '0');
+    vi.stubEnv('H16_SIMULADOR_RESULTADO', 'CONFIRMADO');
+    const fallo = vi
+      .spyOn(llevar, 'confirmarPago')
+      .mockRejectedValueOnce(new Error('fallo H05'));
+    try {
+      const orden = await pedido(TipoPedido.LLEVAR);
+      const cliente = { id: clienteId, rol: Rol.CLIENTE } as typeof gerente;
+      const inicio = await pagos.procesarPago(solicitud(orden.id), cliente);
+      await new ResolucionTarjetasService(repositorio, pagos).procesarLote();
+      expect(await llevar.obtenerSeguimiento(orden.id, cliente)).toMatchObject({
+        estado: EstadoPedido.PENDIENTE_PAGO,
+        pago: EstadoPago.CONFIRMADO,
+        comprobanteId: expect.any(Number),
+      });
+      await new ResolucionTarjetasService(repositorio, pagos).procesarLote();
+      expect(await llevar.obtenerSeguimiento(orden.id, cliente)).toMatchObject({
+        estado: EstadoPedido.RECIBIDO,
+        pago: EstadoPago.CONFIRMADO,
+      });
+      expect(await prisma.pago.count({ where: { pedidoId: orden.id } })).toBe(
+        1,
+      );
+      expect(
+        await prisma.comprobante.count({ where: { ticketId: orden.id } }),
+      ).toBe(1);
+      expect(inicio.estado).toBe(EstadoPago.PENDIENTE);
+    } finally {
+      fallo.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('no persiste tarjeta si MESA cambia a PENDIENTE_PAGO entre la lectura y el bloqueo', async () => {
+    const mesa = await pedido(TipoPedido.MESA);
+    const crear = repositorio.crear.bind(repositorio);
+    const cambiar = vi
+      .spyOn(repositorio, 'crear')
+      .mockImplementationOnce(async (datos) => {
+        await prisma.pedido.update({
+          where: { id: mesa.id },
+          // Conserva la marca para ejercitar de forma independiente el par tipo/estado.
+          data: {
+            estado: EstadoPedido.PENDIENTE_PAGO,
+            actualizadoEn: mesa.actualizadoEn,
+          },
+        });
+        return crear(datos);
+      });
+    try {
+      await expect(
+        pagos.procesarPago(solicitud(mesa.id), gerente),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(await prisma.pago.count({ where: { pedidoId: mesa.id } })).toBe(0);
+    } finally {
+      cambiar.mockRestore();
+    }
+  });
 
   it('confirma un solo efectivo concurrente, cierra MESA y conserva las copias historicas', async () => {
     const mesa = await pedido(TipoPedido.MESA);

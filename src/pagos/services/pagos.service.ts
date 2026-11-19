@@ -289,12 +289,45 @@ export class PagosService {
       return this.consultarTransaccion(transaccionId, usuario);
     }
 
+    if (!(await this.aplicarEstado(transaccionId, pago, estadoNuevo))) {
+      throw new ConflictException(
+        'El estado de la transacción cambió durante la operación',
+      );
+    }
+    return this.consultarTransaccion(transaccionId, usuario);
+  }
+
+  async resolverTarjetaSimulada(
+    transaccionId: string,
+    resultado:
+      | EstadoTransaccionSimulada.CONFIRMADO
+      | EstadoTransaccionSimulada.RECHAZADO,
+  ) {
+    const pago = await this.pagoRepository.buscarPorTransaccion(transaccionId);
+    if (!pago || pago.metodo !== 'TARJETA') return;
+    if (pago.estado === EstadoPago.PENDIENTE) {
+      await this.aplicarEstado(transaccionId, pago, resultado);
+    } else if (
+      pago.estado === EstadoPago.CONFIRMADO &&
+      pago.pedido.tipo === TipoPedido.LLEVAR
+    ) {
+      // Recupera H05 si el proceso se detuvo después de emitir el comprobante.
+      await this.pedidosLlevarService.confirmarPago(pago.pedidoId);
+    }
+  }
+
+  private async aplicarEstado(
+    transaccionId: string,
+    pago: NonNullable<
+      Awaited<ReturnType<PagoRepository['buscarPorTransaccion']>>
+    >,
+    estadoNuevo: EstadoTransaccionSimulada,
+  ): Promise<boolean> {
     this.pasarela.cambiarEstado(
       pago.estado as EstadoTransaccionSimulada,
       estadoNuevo,
     );
 
-    // Actualización condicionada al estado anterior
     const resultado =
       estadoNuevo === EstadoTransaccionSimulada.CONFIRMADO
         ? await this.pagoRepository.confirmarYEmitirComprobante(
@@ -307,22 +340,14 @@ export class PagosService {
             estadoNuevo,
           );
 
-    if (resultado.count !== 1) {
-      throw new ConflictException(
-        'El estado de la transacción cambió durante la operación',
-      );
-    }
-
-    // H05 consulta el pago confirmado desde su propia transacción. Se invoca
-    // después de que PostgreSQL guarda la confirmación y el comprobante.
+    if (resultado.count !== 1) return false;
     if (
       estadoNuevo === EstadoTransaccionSimulada.CONFIRMADO &&
       pago.pedido.tipo === TipoPedido.LLEVAR
     ) {
       await this.pedidosLlevarService.confirmarPago(pago.pedidoId);
     }
-
-    return this.consultarTransaccion(transaccionId, usuario);
+    return true;
   }
 
   // =========================================================
