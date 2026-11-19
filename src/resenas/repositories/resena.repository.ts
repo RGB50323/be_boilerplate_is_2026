@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
-import { EstadoPago, EstadoResena } from '@PrismaClient';
+import { EstadoPago, EstadoResena, MotivoOcultacion } from '@PrismaClient';
 
 export type NuevaResena = {
   pedidoId: number;
@@ -18,6 +18,19 @@ const pagoConfirmadoDesde = (desde: Date) => ({
     { confirmadoEn: null, creadoEn: { gte: desde } },
   ],
 });
+
+const SELECCION_MODERACION = {
+  id: true,
+  estrellas: true,
+  comentario: true,
+  estado: true,
+  creadaEn: true,
+  ocultaEn: true,
+  motivoOcultacion: true,
+  platillo: { select: { nombre: true } },
+  cliente: { select: { nombre: true, apellido: true } },
+  ocultaPor: { select: { nombre: true, apellido: true, email: true } },
+} as const;
 
 @Injectable()
 export class ResenaRepository {
@@ -124,6 +137,50 @@ export class ResenaRepository {
       },
       _count: { _all: true },
     });
+  }
+
+  // H24: reseñas de la sucursal para moderar, de la más reciente a la más antigua
+  listarModeracion(
+    sucursalId: number,
+    estado: EstadoResena | undefined,
+    skip: number,
+    take: number,
+  ) {
+    const where = { pedido: { sucursalId }, estado };
+    return this.prisma.$transaction([
+      this.prisma.resena.count({ where }),
+      this.prisma.resena.findMany({
+        where,
+        orderBy: [{ creadaEn: 'desc' }, { id: 'desc' }],
+        skip,
+        take,
+        select: SELECCION_MODERACION,
+      }),
+    ]);
+  }
+
+  buscarModeracion(id: number) {
+    return this.prisma.resena.findUnique({
+      where: { id },
+      select: {
+        ...SELECCION_MODERACION,
+        pedido: { select: { sucursalId: true } },
+      },
+    });
+  }
+
+  // Solo pasa a OCULTA si sigue VISIBLE: evita ocultarla dos veces
+  async ocultar(id: number, usuarioId: string, motivo: MotivoOcultacion) {
+    const { count } = await this.prisma.resena.updateMany({
+      where: { id, estado: EstadoResena.VISIBLE },
+      data: {
+        estado: EstadoResena.OCULTA,
+        ocultaPorId: usuarioId,
+        ocultaEn: new Date(),
+        motivoOcultacion: motivo,
+      },
+    });
+    return count > 0;
   }
 
   findPagina(platilloId: number, skip: number, take: number) {
