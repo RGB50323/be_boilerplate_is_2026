@@ -1,7 +1,6 @@
 import {
   ConflictException,
   ForbiddenException,
-  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -19,6 +18,17 @@ import {
 const gerente = { id: 'g-1', rol: Rol.GERENTE, sucursalId: 1 } as User;
 const d = (valor: number | string) => new Prisma.Decimal(valor);
 
+function fila(cantidad: string, sucursalId = 1) {
+  return {
+    sucursalId,
+    cantidad,
+    minimo: '5.000',
+    nombre: 'Queso con loroco',
+    unidad: UnidadInsumo.LB,
+    sucursal: 'Centro',
+  };
+}
+
 function insumo(cantidad: number, minimo: number) {
   return { id: 5, nombre: 'Queso con loroco', unidad: UnidadInsumo.LB, cantidad: d(cantidad), minimo: d(minimo) };
 }
@@ -33,6 +43,7 @@ describe('InventarioService', () => {
   const update = vi.fn();
   const movimientoCreate = vi.fn();
   const evaluar = vi.fn();
+  const avisar = vi.fn();
   let service: InventarioService;
 
   beforeEach(() => {
@@ -40,7 +51,8 @@ describe('InventarioService', () => {
     findMany.mockResolvedValue([]);
     update.mockResolvedValue({});
     movimientoCreate.mockResolvedValue({ id: 88 });
-    evaluar.mockResolvedValue(undefined);
+    evaluar.mockResolvedValue(null);
+    avisar.mockResolvedValue(undefined);
     const tx = {
       $queryRaw: queryRaw,
       insumo: { update },
@@ -54,6 +66,7 @@ describe('InventarioService', () => {
     } as unknown as PrismaService;
     service = new InventarioService(new InsumosRepository(prisma), {
       evaluar,
+      avisar,
     } as unknown as EvaluadorAlertasInventario);
   });
 
@@ -139,7 +152,7 @@ describe('InventarioService', () => {
     const entrada = { tipo: TipoMovimientoInsumo.ENTRADA, cantidad: 0.1, motivo: 'Compra' };
 
     it('una salida descuenta la cantidad y guarda el movimiento con usuario y motivo', async () => {
-      queryRaw.mockResolvedValue([{ sucursalId: 1, cantidad: '12.500' }]);
+      queryRaw.mockResolvedValue([fila('12.500')]);
 
       await expect(service.registrarMovimiento(5, gerente, salida)).resolves.toEqual({
         movimientoId: 88,
@@ -157,7 +170,7 @@ describe('InventarioService', () => {
     });
 
     it('una entrada suma sin errores de redondeo', async () => {
-      queryRaw.mockResolvedValue([{ sucursalId: 1, cantidad: '0.200' }]);
+      queryRaw.mockResolvedValue([fila('0.200')]);
 
       await expect(service.registrarMovimiento(5, gerente, entrada)).resolves.toMatchObject({
         cantidadAnterior: 0.2,
@@ -166,7 +179,7 @@ describe('InventarioService', () => {
     });
 
     it('una salida igual a la existencia deja la cantidad en 0', async () => {
-      queryRaw.mockResolvedValue([{ sucursalId: 1, cantidad: '3.000' }]);
+      queryRaw.mockResolvedValue([fila('3.000')]);
 
       await expect(service.registrarMovimiento(5, gerente, salida)).resolves.toMatchObject({
         cantidadActual: 0,
@@ -174,7 +187,7 @@ describe('InventarioService', () => {
     });
 
     it('una salida mayor a la existencia responde 422 y no cambia nada', async () => {
-      queryRaw.mockResolvedValue([{ sucursalId: 1, cantidad: '2.999' }]);
+      queryRaw.mockResolvedValue([fila('2.999')]);
 
       await expect(service.registrarMovimiento(5, gerente, salida)).rejects.toBeInstanceOf(
         UnprocessableEntityException,
@@ -182,10 +195,11 @@ describe('InventarioService', () => {
       expect(update).not.toHaveBeenCalled();
       expect(movimientoCreate).not.toHaveBeenCalled();
       expect(evaluar).not.toHaveBeenCalled();
+      expect(avisar).not.toHaveBeenCalled();
     });
 
     it('una entrada que supera el máximo responde 422', async () => {
-      queryRaw.mockResolvedValue([{ sucursalId: 1, cantidad: '999999999.999' }]);
+      queryRaw.mockResolvedValue([fila('999999999.999')]);
 
       await expect(service.registrarMovimiento(5, gerente, entrada)).rejects.toBeInstanceOf(
         UnprocessableEntityException,
@@ -194,7 +208,7 @@ describe('InventarioService', () => {
     });
 
     it('bloquea la fila del insumo antes de leer la cantidad', async () => {
-      queryRaw.mockResolvedValue([{ sucursalId: 1, cantidad: '12.500' }]);
+      queryRaw.mockResolvedValue([fila('12.500')]);
 
       await service.registrarMovimiento(5, gerente, salida);
 
@@ -217,7 +231,7 @@ describe('InventarioService', () => {
     });
 
     it('responde 403 si el insumo es de otra sucursal', async () => {
-      queryRaw.mockResolvedValue([{ sucursalId: 2, cantidad: '12.500' }]);
+      queryRaw.mockResolvedValue([fila('12.500', 2)]);
 
       await expect(service.registrarMovimiento(5, gerente, salida)).rejects.toBeInstanceOf(
         ForbiddenException,
@@ -225,32 +239,56 @@ describe('InventarioService', () => {
       expect(update).not.toHaveBeenCalled();
     });
 
-    it('evalúa las alertas del insumo después de guardar el movimiento', async () => {
+    it('evalúa las alertas dentro de la transacción, con la cantidad nueva y el mínimo', async () => {
       const orden: string[] = [];
-      queryRaw.mockResolvedValue([{ sucursalId: 1, cantidad: '12.500' }]);
+      queryRaw.mockResolvedValue([fila('12.500')]);
       movimientoCreate.mockImplementation(async () => {
         orden.push('movimiento');
         return { id: 88 };
       });
-      evaluar.mockImplementation(async () => {
-        orden.push('alertas');
+      evaluar.mockImplementation(async (tx: unknown) => {
+        orden.push(tx === undefined ? 'fuera' : 'alertas');
+        return null;
       });
 
       await service.registrarMovimiento(5, gerente, salida);
 
-      expect(evaluar).toHaveBeenCalledWith(5);
       expect(orden).toEqual(['movimiento', 'alertas']);
+      const insumo = evaluar.mock.calls[0][1];
+      expect(insumo).toMatchObject({
+        insumoId: 5,
+        sucursalId: 1,
+        nombre: 'Queso con loroco',
+        unidad: UnidadInsumo.LB,
+        sucursal: 'Centro',
+      });
+      expect([insumo.cantidad.toString(), insumo.minimo.toString()]).toEqual(['9.5', '5']);
     });
 
-    it('si falla la evaluación de alertas igual responde: el movimiento ya se guardó', async () => {
-      queryRaw.mockResolvedValue([{ sucursalId: 1, cantidad: '12.500' }]);
-      evaluar.mockRejectedValue(new Error('falló'));
-      const logError = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    it('si se crea una alerta avisa después del commit', async () => {
+      const alerta = { alertaId: 9, insumoId: 5 };
+      queryRaw.mockResolvedValue([fila('6.000')]);
+      evaluar.mockResolvedValue(alerta);
 
-      await expect(service.registrarMovimiento(5, gerente, salida)).resolves.toMatchObject({
-        cantidadActual: 9.5,
-      });
-      expect(logError).toHaveBeenCalled();
+      await service.registrarMovimiento(5, gerente, salida);
+
+      expect(avisar).toHaveBeenCalledWith(alerta);
+    });
+
+    it('si no se crea una alerta no avisa', async () => {
+      queryRaw.mockResolvedValue([fila('12.500')]);
+
+      await service.registrarMovimiento(5, gerente, salida);
+
+      expect(avisar).not.toHaveBeenCalled();
+    });
+
+    it('si falla la evaluación de alertas se revierte el movimiento', async () => {
+      queryRaw.mockResolvedValue([fila('12.500')]);
+      evaluar.mockRejectedValue(new Error('falló'));
+
+      await expect(service.registrarMovimiento(5, gerente, salida)).rejects.toThrow('falló');
+      expect(avisar).not.toHaveBeenCalled();
     });
   });
 

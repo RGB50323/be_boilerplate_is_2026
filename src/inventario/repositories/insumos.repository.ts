@@ -13,6 +13,7 @@ import {
   InsumoNoEncontradoError,
 } from '@Inventario/errors';
 import { CANTIDAD_MAXIMA } from '@Inventario/utils';
+import type { AlertaCreada, InsumoTrasMovimiento } from './alertas-insumo.repository.js';
 
 const SELECCION_INSUMO = {
   id: true,
@@ -38,15 +39,25 @@ export type DatosMovimiento = {
   motivo: string;
 };
 
+export type EvaluarAlertasEnTransaccion = (
+  tx: Prisma.TransactionClient,
+  insumo: InsumoTrasMovimiento,
+) => Promise<AlertaCreada | null>;
+
 export interface MovimientoRegistrado {
   movimientoId: number;
   cantidadAnterior: Prisma.Decimal;
   cantidadActual: Prisma.Decimal;
+  alertaCreada: AlertaCreada | null;
 }
 
 interface FilaInsumoBloqueado {
   sucursalId: number;
   cantidad: string;
+  minimo: string;
+  nombre: string;
+  unidad: UnidadInsumo;
+  sucursal: string;
 }
 
 @Injectable()
@@ -93,13 +104,16 @@ export class InsumosRepository {
     sucursalId: number,
     usuarioId: string,
     datos: DatosMovimiento,
+    evaluarAlertas: EvaluarAlertasEnTransaccion,
   ): Promise<MovimientoRegistrado> {
     return this.prisma.$transaction(async (tx) => {
       const [fila] = await tx.$queryRaw<FilaInsumoBloqueado[]>(Prisma.sql`
-        SELECT sucursal_id AS "sucursalId", cantidad::text AS cantidad
-        FROM insumo
-        WHERE id = ${insumoId}
-        FOR UPDATE
+        SELECT i.sucursal_id AS "sucursalId", i.cantidad::text AS cantidad,
+          i.minimo::text AS minimo, i.nombre, i.unidad, s.nombre AS sucursal
+        FROM insumo i
+        JOIN sucursal s ON s.id = i.sucursal_id
+        WHERE i.id = ${insumoId}
+        FOR UPDATE OF i
       `);
 
       if (!fila) throw new InsumoNoEncontradoError(insumoId);
@@ -134,7 +148,17 @@ export class InsumosRepository {
         select: { id: true },
       });
 
-      return { movimientoId: id, cantidadAnterior, cantidadActual };
+      const alertaCreada = await evaluarAlertas(tx, {
+        insumoId,
+        sucursalId: fila.sucursalId,
+        nombre: fila.nombre,
+        unidad: fila.unidad,
+        sucursal: fila.sucursal,
+        cantidad: cantidadActual,
+        minimo: new Prisma.Decimal(fila.minimo),
+      });
+
+      return { movimientoId: id, cantidadAnterior, cantidadActual, alertaCreada };
     });
   }
 

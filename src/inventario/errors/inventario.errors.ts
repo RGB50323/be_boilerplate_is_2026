@@ -32,3 +32,24 @@ export class CantidadMaximaExcedidaError extends Error {
     this.name = 'CantidadMaximaExcedidaError';
   }
 }
+
+export class AlertaNoEncontradaError extends Error {
+  constructor(readonly alertaId: number) {
+    super(`La alerta ${alertaId} no existe.`);
+    this.name = 'AlertaNoEncontradaError';
+  }
+}
+
+export class AlertaDeOtraSucursalError extends Error {
+  constructor(readonly alertaId: number) {
+    super(`La alerta ${alertaId} es de otra sucursal.`);
+    this.name = 'AlertaDeOtraSucursalError';
+  }
+}
+
+export class AlertaResueltaError extends Error {
+  constructor(readonly alertaId: number) {
+    super(`La alerta ${alertaId} ya está resuelta.`);
+    this.name = 'AlertaResueltaError';
+  }
+}

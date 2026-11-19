@@ -2,7 +2,6 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -51,8 +50,6 @@ function aRespuesta(insumo: InsumoRegistro): InsumoResponseDto {
 
 @Injectable()
 export class InventarioService {
-  private readonly logger = new Logger(InventarioService.name);
-
   constructor(
     private readonly insumosRepository: InsumosRepository,
     private readonly evaluadorAlertas: EvaluadorAlertasInventario,
@@ -95,18 +92,14 @@ export class InventarioService {
         sucursalId,
         user.id,
         { tipo: dto.tipo, cantidad: dto.cantidad, motivo: dto.motivo },
+        (tx, insumo) => this.evaluadorAlertas.evaluar(tx, insumo),
       );
     } catch (error) {
       throw this.traducir(error);
     }
 
-    try {
-      await this.evaluadorAlertas.evaluar(insumoId);
-    } catch (error) {
-      this.logger.error(
-        `No se pudo evaluar la alerta del insumo ${insumoId}.`,
-        error instanceof Error ? error.stack : String(error),
-      );
+    if (registrado.alertaCreada) {
+      await this.evaluadorAlertas.avisar(registrado.alertaCreada);
     }
 
     return {
