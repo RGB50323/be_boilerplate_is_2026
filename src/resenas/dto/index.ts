@@ -2,3 +2,4 @@ export * from './resenas-response.dto.js';
 export * from './publicar-resena.dto.js';
 export * from './resena-cliente-response.dto.js';
 export * from './reporte-resenas.dto.js';
+export * from './moderacion-resenas.dto.js';
