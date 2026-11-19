@@ -4,3 +4,4 @@ export * from './insumo-response.dto.js';
 export * from './registrar-movimiento.dto.js';
 export * from './movimiento-registrado-response.dto.js';
 export * from './historial-movimientos-response.dto.js';
+export * from './alerta-insumo-response.dto.js';

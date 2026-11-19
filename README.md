@@ -331,6 +331,8 @@ Base: `http://localhost:3000/api/v1` · Documentación interactiva: `http://loca
 | `POST` | `/inventario/insumos` | Bearer · `GERENTE` | `201` | Registra un insumo con cantidad inicial 0 (H14) |
 | `POST` | `/inventario/insumos/:id/movimientos` | Bearer · `GERENTE` | `201` | Registra una entrada o salida del insumo (H14) |
 | `GET` | `/inventario/insumos/:id/movimientos` | Bearer · `GERENTE` | `200` | Historial paginado de movimientos del insumo (H14) |
+| `GET` | `/inventario/alertas` | Bearer · `GERENTE` | `200` | Alertas sin resolver de la sucursal del gerente (H15) |
+| `PATCH` | `/inventario/alertas/:id/vista` | Bearer · `GERENTE` | `200` | Marca una alerta como vista (H15) |
 | `GET` | `/dashboard/ventas` | Bearer · `GERENTE_GENERAL` | `200` | Ventas por sucursal con ticket promedio, total general, platillos y horarios pico |
 | `GET` | `/dashboard/ventas/detalle` | Bearer · `GERENTE_GENERAL` | `200` | Ventas confirmadas, una por pedido, paginadas |
 | `GET` | `/dashboard/ventas/exportar` | Bearer · `GERENTE_GENERAL` | `200` | CSV de ventas por sucursal y total general |
@@ -570,7 +572,7 @@ Solo para `GERENTE`. La sucursal siempre sale del usuario autenticado, nunca de 
 ```
 
 - Guarda el movimiento (usuario, fecha y hora, motivo, cantidad anterior y actual) y la nueva cantidad del insumo en una sola transacción.
-- Después del commit llama a `EvaluadorAlertasInventario.evaluar(insumoId)`. Por ahora no hace nada: la evaluación de alertas llega con H15 (BE-15.1).
+- En la misma transacción evalúa las alertas del insumo (ver H15).
 - Errores: `400` cantidad menor o igual a 0, tipo inválido o motivo vacío; `401`; `403` si el rol no es `GERENTE` o el insumo es de otra sucursal; `404` si el insumo no existe; `422` si la salida supera la existencia (la cantidad no cambia) o si la entrada supera el máximo de `DECIMAL(12, 3)`.
 - **Concurrencia:** la transacción bloquea la fila del insumo (`SELECT … FOR UPDATE`) antes de leer la cantidad. Si dos salidas simultáneas juntas superan la existencia, una recibe `201` y la otra `422`.
 
@@ -586,6 +588,38 @@ Solo para `GERENTE`. La sucursal siempre sale del usuario autenticado, nunca de 
 
 - `fecha` y `hora` en hora local de El Salvador. `usuario` es el nombre de quien registró el movimiento (su email si no tiene nombre).
 - Errores: `400` página inválida; `401`; `403` si el rol no es `GERENTE` o el insumo es de otra sucursal; `404` si el insumo no existe.
+
+---
+
+## Alertas de inventario (H15)
+
+### Generación y cierre automático
+
+Cada movimiento de `POST /inventario/insumos/:id/movimientos` llama a `EvaluadorAlertasInventario.evaluar` dentro de su transacción, con la fila del insumo bloqueada:
+
+| Después del movimiento | Sin alerta abierta | Con alerta `ACTIVA` o `VISTA` |
+|---|---|---|
+| `cantidad <= minimo` | Crea una alerta `ACTIVA` con cantidad, mínimo y sucursal | No hace nada |
+| `cantidad > minimo` | No hace nada | La pasa a `RESUELTA` y guarda `resuelta_en` |
+
+- Estados: `ACTIVA → VISTA → RESUELTA`, o `ACTIVA → RESUELTA` directo.
+- El índice único parcial `alerta_insumo_activa_unica` impide dos alertas sin resolver para el mismo insumo. La alerta se inserta con `ON CONFLICT … DO NOTHING`: si el índice la descarta, el movimiento sigue (una violación de unicidad atrapada dejaría abortada la transacción en PostgreSQL).
+- Al **crear** una alerta, después del commit, se avisa a los gerentes de la sucursal con `NotificacionesService.notificar` (BE-27.1), con correo y referencia `ALERTA_INSUMO`. Si el aviso falla, se registra en el log; la alerta y el movimiento ya quedaron guardados.
+
+### `GET /inventario/alertas`
+
+```jsonc
+// 200 OK — de la más reciente a la más antigua
+[{ "id": 9, "insumoId": 5, "insumo": "Masa de maíz", "cantidad": 18, "minimo": 20, "unidad": "lb", "estado": "ACTIVA", "creadaEn": "2026-11-18T14:05:00.000Z" }]
+```
+
+- Solo alertas `ACTIVA` y `VISTA` de la sucursal del usuario autenticado. `cantidad` y `minimo` son los del momento en que se creó la alerta.
+- Errores: `401` sin sesión; `403` si el rol no es `GERENTE` o el usuario no tiene sucursal.
+
+### `PATCH /inventario/alertas/:id/vista`
+
+- Pasa la alerta de `ACTIVA` a `VISTA` y guarda `vista_en`. Si ya estaba `VISTA`, responde `200` sin cambios. Devuelve la alerta con el mismo formato del listado; sigue apareciendo en el listado hasta que se resuelve.
+- Errores: `401`; `403` si el rol no es `GERENTE` o la alerta es de otra sucursal; `404` si no existe; `409` si ya está resuelta.
 
 ---
 
@@ -828,10 +862,10 @@ nest build && tsc-alias -p tsconfig.build.json
     │   ├── mesero.module.ts
     │   └── index.ts
     ├── inventario/
-    │   ├── controllers/          # GET/POST /inventario/insumos, entradas, salidas e historial
-    │   ├── services/             # InventarioService y EvaluadorAlertasInventario (pendiente H15)
-    │   ├── repositories/         # InsumosRepository (bloqueo de fila al mover existencias)
-    │   ├── errors/               # InsumoDuplicadoError, ExistenciaInsuficienteError, …
+    │   ├── controllers/          # Insumos, entradas, salidas e historial; alertas (H15)
+    │   ├── services/             # InventarioService, AlertasService y EvaluadorAlertasInventario
+    │   ├── repositories/         # InsumosRepository (bloqueo de fila) y AlertasInsumoRepository
+    │   ├── errors/               # InsumoDuplicadoError, ExistenciaInsuficienteError, AlertaResueltaError, …
     │   ├── utils/                # Unidades, estado BAJO/NORMAL y límites
     │   ├── dto/
     │   ├── inventario.module.ts

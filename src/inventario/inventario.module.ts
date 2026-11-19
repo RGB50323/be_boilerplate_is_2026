@@ -1,10 +1,22 @@
 import { Module } from '@nestjs/common';
-import { InventarioController } from '@Inventario/controllers';
-import { InsumosRepository } from '@Inventario/repositories';
-import { EvaluadorAlertasInventario, InventarioService } from '@Inventario/services';
+import { AlertasController, InventarioController } from '@Inventario/controllers';
+import { AlertasInsumoRepository, InsumosRepository } from '@Inventario/repositories';
+import {
+  AlertasService,
+  EvaluadorAlertasInventario,
+  InventarioService,
+} from '@Inventario/services';
+import { NotificacionesModule } from '@Notificaciones';
 
 @Module({
-  controllers: [InventarioController],
-  providers: [InventarioService, InsumosRepository, EvaluadorAlertasInventario],
+  imports: [NotificacionesModule],
+  controllers: [InventarioController, AlertasController],
+  providers: [
+    InventarioService,
+    AlertasService,
+    InsumosRepository,
+    AlertasInsumoRepository,
+    EvaluadorAlertasInventario,
+  ],
 })
 export class InventarioModule {}
