@@ -12,6 +12,7 @@ import {
   type User,
 } from '@PrismaClient';
 import { PrismaService } from '@Prisma/services';
+import { urlPruebaTemporal } from '../prisma/destinos-base.js';
 import type { PedidosLlevarService } from '../src/pedidos/services/pedidos-llevar.service.js';
 import { ComprobantesRepository } from '../src/comprobantes/repositories/comprobantes.repository.js';
 import { ComprobantesService } from '../src/comprobantes/services/comprobantes.service.js';
@@ -24,7 +25,7 @@ import {
 } from '../src/pagos/services/pasarela-simulada.service.js';
 
 // Base aislada con las migraciones aplicadas. Las pruebas necesitan commits reales.
-const databaseUrl = process.env.PAGOS_TEST_DATABASE_URL;
+const databaseUrl = urlPruebaTemporal('h17', process.env);
 
 async function crearDatos(prisma: PrismaClient) {
   return prisma.$transaction(async (tx) => {
