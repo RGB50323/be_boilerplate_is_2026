@@ -16,6 +16,7 @@ import type { ModificarReservacionDto } from '@Reservaciones/dto';
 import type { ConsultarDisponibilidadDto } from '@Reservaciones/dto';
 import {
   diaDeReserva,
+  fechaHoraLocal,
   validarHorarioReservacion,
 } from '../utils/horario-reservacion.js';
 
@@ -107,7 +108,7 @@ export class EdicionReservacionService {
   ) {
     let correos: string[] = [];
     try {
-      const respuesta = await this.repository.editar(
+      const resultado = await this.repository.editar(
         this.id(id),
         clienteId,
         async (reserva, tx) => {
@@ -149,7 +150,10 @@ export class EdicionReservacionService {
             reserva.inicio.getTime() === inicio.getTime() &&
             reserva.fin.getTime() === fin.getTime()
           ) {
-            return this.respuesta(reserva);
+            return {
+              respuesta: this.respuesta(reserva),
+              fechaAnterior: fechaHoraLocal(reserva.inicio).fecha,
+            };
           }
           const actualizada = await this.repository.guardar(
             reserva.id,
@@ -167,16 +171,25 @@ export class EdicionReservacionService {
           const respuesta = this.respuesta(actualizada);
           // El aviso y la modificación se confirman juntos; un fallo conserva los datos originales.
           correos = await this.avisos.registrarModificada(actualizada, tx);
-          return respuesta;
+          return {
+            respuesta,
+            fechaAnterior: fechaHoraLocal(reserva.inicio).fecha,
+          };
         },
       );
       // El correo sale solo después del commit
       this.avisos.enviarCorreos(correos);
       this.eventEmitter?.emit(OcupacionEvento.RESERVACION_CAMBIADA, {
-        sucursalId: respuesta.sucursalId,
-        fecha: datos.fecha,
+        sucursalId: resultado.respuesta.sucursalId,
+        fecha: resultado.fechaAnterior,
       });
-      return respuesta;
+      if (resultado.fechaAnterior !== resultado.respuesta.fecha) {
+        this.eventEmitter?.emit(OcupacionEvento.RESERVACION_CAMBIADA, {
+          sucursalId: resultado.respuesta.sucursalId,
+          fecha: resultado.respuesta.fecha,
+        });
+      }
+      return resultado.respuesta;
     } catch (error) {
       if (error instanceof MesaNoDisponibleError) {
         throw new ConflictException({

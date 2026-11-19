@@ -43,7 +43,7 @@ Endpoint de consulta:
 - Requiere autenticación por token en el handshake (`auth: { token }`).
 - El socket se une a la sala `sucursal:<sucursalId>`.
 - **Evento emitido**: `ocupacion:actualizada` con payload `{ sucursalId, fecha }`.
-- Se emite automáticamente cuando se crea, edita o cancela una reservación en esa sucursal, permitiendo al frontend refrescar la ocupación proyectada sin recargar la página.
+- Se emite automáticamente cuando se crea, edita o cancela una reservación en esa sucursal, permitiendo al frontend refrescar la ocupación proyectada sin recargar la página. Si una edición cambia la fecha, se emite para la fecha anterior y la nueva después de confirmar el cambio.
 
 ## Verificación
 
