@@ -234,6 +234,34 @@ export class PagosService {
   // BE-16.2: Consultar y actualizar transacciones
   // =========================================================
 
+  async consultarPorPedido(pedidoId: number, usuario: User) {
+    if (!Number.isInteger(pedidoId) || pedidoId < 1 || pedidoId > 2147483647) {
+      throw new NotFoundException('No existe el pedido');
+    }
+    const pedido = await this.pagoRepository.buscarTitularPedido(pedidoId);
+    if (!pedido) throw new NotFoundException('No existe el pedido');
+
+    const autorizado =
+      usuario.rol === Rol.GERENTE_GENERAL ||
+      (usuario.rol === Rol.GERENTE &&
+        usuario.sucursalId === pedido.sucursalId) ||
+      (usuario.rol === Rol.MESERO &&
+        pedido.tipo === TipoPedido.MESA &&
+        usuario.sucursalId === pedido.sucursalId) ||
+      (usuario.rol === Rol.CLIENTE &&
+        pedido.tipo === TipoPedido.LLEVAR &&
+        pedido.clienteId === usuario.id);
+    if (!autorizado)
+      throw new ForbiddenException(
+        'No tienes permiso para consultar este pago',
+      );
+
+    const pago = await this.pagoRepository.buscarPagoRelevante(pedidoId);
+    if (!pago) return { pago: null };
+    const { ticketId, ...resultado } = this.respuestaPago(pago);
+    return { ...resultado, pedidoId: ticketId, metodo: pago.metodo };
+  }
+
   async consultarTransaccion(transaccionId: string, usuario: User) {
     if (usuario.rol !== Rol.MESERO && !this.esGerencia(usuario)) {
       throw new ForbiddenException(

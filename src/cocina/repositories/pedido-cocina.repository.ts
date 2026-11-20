@@ -8,6 +8,7 @@ import {
   TipoPedido,
 } from '@PrismaClient';
 import { ESTADOS_EN_COCINA } from '@Cocina/constants';
+import { cerrarPedidoLlevarListo } from '../../pedidos/utils/cerrar-pedido-llevar.js';
 import {
   ItemDeOtraSucursalError,
   ItemNoEncontradoError,
@@ -41,6 +42,7 @@ interface FilaItemBloqueado {
   sucursalId: number;
   estadoItem: EstadoItem;
   estadoPedido: EstadoPedido;
+  tipo: TipoPedido;
 }
 
 @Injectable()
@@ -63,11 +65,14 @@ export class PedidoCocinaRepository {
     });
   }
 
-  marcarItemListo(itemId: number, sucursalId: number): Promise<ItemMarcadoListo> {
+  marcarItemListo(
+    itemId: number,
+    sucursalId: number,
+  ): Promise<ItemMarcadoListo> {
     return this.prisma.$transaction(async (tx) => {
       const [fila] = await tx.$queryRaw<FilaItemBloqueado[]>(Prisma.sql`
         SELECT d.pedido_id AS "pedidoId", p.sucursal_id AS "sucursalId",
-          d.estado AS "estadoItem", p.estado AS "estadoPedido"
+          d.estado AS "estadoItem", p.estado AS "estadoPedido", p.tipo
         FROM detalle_pedido d
         JOIN pedido p ON p.id = d.pedido_id
         WHERE d.id = ${itemId}
@@ -75,8 +80,10 @@ export class PedidoCocinaRepository {
       `);
 
       if (!fila) throw new ItemNoEncontradoError(itemId);
-      if (fila.sucursalId !== sucursalId) throw new ItemDeOtraSucursalError(itemId);
-      if (fila.estadoItem !== EstadoItem.PENDIENTE) throw new ItemNoPendienteError(itemId);
+      if (fila.sucursalId !== sucursalId)
+        throw new ItemDeOtraSucursalError(itemId);
+      if (fila.estadoItem !== EstadoItem.PENDIENTE)
+        throw new ItemNoPendienteError(itemId);
       if (!ESTADOS_EN_COCINA.includes(fila.estadoPedido)) {
         throw new PedidoFueraDeCocinaError(fila.pedidoId);
       }
@@ -91,18 +98,26 @@ export class PedidoCocinaRepository {
         where: { pedidoId: fila.pedidoId, estado: EstadoItem.PENDIENTE },
       });
       const pedidoCompletado = pendientes === 0;
+      let pedidoEstado = fila.estadoPedido;
       if (pedidoCompletado) {
         await tx.pedido.update({
           where: { id: fila.pedidoId },
           data: { estado: EstadoPedido.LISTO },
         });
+        pedidoEstado = EstadoPedido.LISTO;
+        if (
+          fila.tipo === TipoPedido.LLEVAR &&
+          (await cerrarPedidoLlevarListo(tx, fila.pedidoId))
+        ) {
+          pedidoEstado = EstadoPedido.CERRADO;
+        }
       }
 
       return {
         itemId,
         pedidoId: fila.pedidoId,
         listoEn: listoEn as Date,
-        pedidoEstado: pedidoCompletado ? EstadoPedido.LISTO : fila.estadoPedido,
+        pedidoEstado,
         pedidoCompletado,
       };
     });

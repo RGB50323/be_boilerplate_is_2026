@@ -43,7 +43,7 @@ async function crearDatos(prisma: PrismaClient) {
     const pedido = await tx.pedido.create({
       data: {
         tipo: TipoPedido.MESA,
-        estado: EstadoPedido.PENDIENTE_PAGO,
+        estado: EstadoPedido.ENTREGADO,
         sucursalId: sucursal.id,
         mesaId: mesa.id,
         subtotal: '4.50',
@@ -124,6 +124,7 @@ describe.skipIf(!databaseUrl)('H17 - emisión automática en PostgreSQL', () => 
     return service.cambiarEstadoTransaccion(
       transaccionId,
       EstadoTransaccionSimulada.CONFIRMADO,
+      usuario,
     );
   }
 
@@ -177,7 +178,7 @@ describe.skipIf(!databaseUrl)('H17 - emisión automática en PostgreSQL', () => 
         comprobantes.descargarPdf(original.id, usuario),
         comprobantes.descargarPdf(original.id, usuario),
       ]);
-      expect(descargas.map(({ buffer }) => modos.get(buffer)).sort()).toEqual([
+      expect(descargas.map(({ buffer }) => modos.get(buffer)).sort((a, b) => String(a).localeCompare(String(b)))).toEqual([
         'COPIA',
         'ORIGINAL',
       ]);
@@ -190,6 +191,7 @@ describe.skipIf(!databaseUrl)('H17 - emisión automática en PostgreSQL', () => 
       await service.cambiarEstadoTransaccion(
         transaccionId,
         EstadoTransaccionSimulada.REEMBOLSADO,
+        usuario,
       );
       expect(
         modos.get(
@@ -231,7 +233,12 @@ describe.skipIf(!databaseUrl)('H17 - emisión automática en PostgreSQL', () => 
       where: { id: datos!.platillo.id },
       data: { nombre: 'Limonada nueva' },
     });
-    entrada.ticket.items[0]!.nombre = 'Limonada nueva';
+    const cambiado = { ...entrada, ticket: { ...entrada.ticket, items: [
+      { ...entrada.ticket.items[0]!, nombre: 'Limonada nueva' },
+    ] } };
+    await expect(service.procesarPago(cambiado, usuario)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
     expect(await service.procesarPago(entrada, usuario)).toEqual(pago);
 
     const confirmado = await confirmar(where.transaccionId);
@@ -253,6 +260,7 @@ describe.skipIf(!databaseUrl)('H17 - emisión automática en PostgreSQL', () => 
     await service.cambiarEstadoTransaccion(
       where.transaccionId,
       EstadoTransaccionSimulada.REEMBOLSADO,
+      usuario,
     );
     expect((await prisma.pago.findUniqueOrThrow({ where })).estado).toBe(
       EstadoPago.REEMBOLSADO,
@@ -319,6 +327,7 @@ describe.skipIf(!databaseUrl)('H17 - emisión automática en PostgreSQL', () => 
     const rechazado = await service.cambiarEstadoTransaccion(
       where.transaccionId,
       EstadoTransaccionSimulada.RECHAZADO,
+      usuario,
     );
     expect(rechazado.estado).toBe(EstadoPago.RECHAZADO);
     expect(await prisma.comprobante.findUnique({ where })).toBeNull();

@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { EstadoPago } from '@PrismaClient';
+import { EstadoPago, EstadoPedido, TipoPedido } from '@PrismaClient';
 import type { PrismaService } from '@Prisma/services';
 import { ComprobantesRepository } from '../../comprobantes/repositories/comprobantes.repository.js';
 import { ComprobantesService } from '../../comprobantes/services/comprobantes.service.js';
@@ -8,14 +8,19 @@ import { PagoRepository } from './pago.repository.js';
 
 function preparar() {
   const ticketSnapshot = { version: 1, pedidoId: 3, items: [], total: '4.50' };
+  const detallePago = { marca: 'VISA', ultimosCuatro: '4242' };
   const tx = {
     pago: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       findUniqueOrThrow: vi
         .fn()
-        .mockResolvedValue({ id: 5, pedidoId: 3, ticketSnapshot }),
+        .mockResolvedValue({ id: 5, pedidoId: 3, ticketSnapshot, detallePago }),
     },
-    comprobante: { create: vi.fn() },
+    pedido: {
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ tipo: TipoPedido.MESA, estado: EstadoPedido.ENTREGADO }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    comprobante: { create: vi.fn().mockResolvedValue({ id: 8, contenidoSnapshot: ticketSnapshot, detallePago }) },
   };
   const prisma = {
     $transaction: vi.fn(async (operacion: (cliente: typeof tx) => unknown) =>
@@ -27,12 +32,12 @@ function preparar() {
     new ComprobantesService(new ComprobantesRepository()),
   );
 
-  return { repository, prisma, tx, ticketSnapshot };
+  return { repository, prisma, tx, ticketSnapshot, detallePago };
 }
 
 describe('PagoRepository.confirmarYEmitirComprobante', () => {
   it('actualiza el pago y copia el snapshot usando el mismo cliente transaccional', async () => {
-    const { repository, prisma, tx, ticketSnapshot } = preparar();
+    const { repository, prisma, tx, ticketSnapshot, detallePago } = preparar();
 
     await expect(
       repository.confirmarYEmitirComprobante('tx-5', EstadoPago.PENDIENTE),
@@ -42,12 +47,17 @@ describe('PagoRepository.confirmarYEmitirComprobante', () => {
       where: { transaccionId: 'tx-5', estado: EstadoPago.PENDIENTE },
       data: { estado: EstadoPago.CONFIRMADO, confirmadoEn: expect.any(Date) },
     });
+    expect(tx.pedido.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 3, estado: EstadoPedido.ENTREGADO },
+      data: { estado: EstadoPedido.CERRADO },
+    });
     expect(tx.comprobante.create).toHaveBeenCalledExactlyOnceWith({
       data: {
         numero: 'CP-5',
         ticketId: 3,
         transaccionId: 'tx-5',
         contenidoSnapshot: ticketSnapshot,
+        detallePago,
       },
     });
   });

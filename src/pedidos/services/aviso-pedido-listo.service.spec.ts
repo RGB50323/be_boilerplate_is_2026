@@ -51,6 +51,14 @@ describe('AvisoPedidoListoService', () => {
     });
   });
 
+  it('conserva el aviso cuando cocina completa y cierra un pedido para llevar', async () => {
+    const { service, notificaciones } = crearContexto(
+      pedido({ estado: EstadoPedido.CERRADO }),
+    );
+    await expect(service.avisar(121)).resolves.toBe(true);
+    expect(notificaciones.notificar).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ['es de mesa', { tipo: TipoPedido.MESA, clienteId: null }],
     ['fue cancelado', { estado: EstadoPedido.CANCELADO }],

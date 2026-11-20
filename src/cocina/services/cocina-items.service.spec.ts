@@ -86,6 +86,18 @@ describe('CocinaItemsService', () => {
     expect(orden).toEqual(['commit', 'eventos']);
   });
 
+  it('devuelve CERRADO para LLEVAR completo y publica el mismo evento de finalizacion', async () => {
+    marcarItemListo.mockResolvedValue(
+      marcado({ pedidoEstado: EstadoPedido.CERRADO, pedidoCompletado: true }),
+    );
+
+    await expect(service.marcarListo(301, cocinero)).resolves.toMatchObject({
+      estado: EstadoItem.LISTO,
+      pedidoEstado: EstadoPedido.CERRADO,
+    });
+    expect(platilloListo).toHaveBeenCalledExactlyOnceWith(41, true);
+  });
+
   it('responde 409 si el ítem ya está listo', async () => {
     marcarItemListo.mockRejectedValue(new ItemNoPendienteError(301));
 

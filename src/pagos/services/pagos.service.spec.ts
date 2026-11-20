@@ -2,7 +2,6 @@
 import {
   BadRequestException,
   BadGatewayException,
-  BadRequestException,
   ServiceUnavailableException,
   ConflictException,
   ForbiddenException,
@@ -31,6 +30,8 @@ describe('PagosService - BE-16.1', () => {
   const gerenteGeneral = { rol: Rol.GERENTE_GENERAL } as User;
 
   const repository = {
+    buscarTitularPedido: vi.fn(),
+    buscarPagoRelevante: vi.fn(),
     buscarPorSolicitud: vi.fn(),
     buscarPedido: vi.fn(),
     buscarPagoBloqueante: vi.fn(),
@@ -69,6 +70,7 @@ describe('PagosService - BE-16.1', () => {
   };
 
   const pedido = {
+    actualizadoEn: new Date('2026-11-19T12:00:00Z'),
     id: 54,
     tipo: TipoPedido.LLEVAR,
     estado: EstadoPedido.PENDIENTE_PAGO,
@@ -120,6 +122,46 @@ describe('PagosService - BE-16.1', () => {
 );
   });
 
+  describe('consulta por pedido', () => {
+    const mesa = { tipo: TipoPedido.MESA, sucursalId: 1, clienteId: null, meseroId: 'asignado' };
+    const llevar = { tipo: TipoPedido.LLEVAR, sucursalId: 1, clienteId: usuario.id };
+    const mesero = { id: 'asignado', rol: Rol.MESERO, sucursalId: 1 } as User;
+    const gerente = { rol: Rol.GERENTE, sucursalId: 1 } as User;
+
+    beforeEach(() => {
+      repository.buscarTitularPedido.mockResolvedValue(mesa);
+      repository.buscarPagoRelevante.mockResolvedValue(null);
+    });
+
+    it.each(['asignado', 'otro-mesero'])('autoriza al mesero %s de la sucursal', async (id) => {
+      await expect(service.consultarPorPedido(54, { ...mesero, id })).resolves.toEqual({ pago: null });
+      expect(repository.buscarPagoRelevante).toHaveBeenCalledWith(54);
+    });
+
+    it('rechaza a meseros de otra sucursal y pedidos LLEVAR', async () => {
+      await expect(service.consultarPorPedido(54, { ...mesero, sucursalId: 2 })).rejects.toMatchObject({ status: 403 });
+      repository.buscarTitularPedido.mockResolvedValue(llevar);
+      await expect(service.consultarPorPedido(54, mesero)).rejects.toMatchObject({ status: 403 });
+      expect(repository.buscarPagoRelevante).not.toHaveBeenCalled();
+    });
+
+    it('autoriza solo al cliente propietario de LLEVAR y respeta el alcance de gerencia', async () => {
+      await expect(service.consultarPorPedido(54, usuario)).rejects.toMatchObject({ status: 403 });
+      repository.buscarTitularPedido.mockResolvedValue(llevar);
+      await expect(service.consultarPorPedido(54, { ...usuario, id: 'otro' })).rejects.toMatchObject({ status: 403 });
+      await expect(service.consultarPorPedido(54, usuario)).resolves.toEqual({ pago: null });
+      await expect(service.consultarPorPedido(54, gerente)).resolves.toEqual({ pago: null });
+      await expect(service.consultarPorPedido(54, { ...gerente, sucursalId: 2 })).rejects.toMatchObject({ status: 403 });
+      await expect(service.consultarPorPedido(54, gerenteGeneral)).resolves.toEqual({ pago: null });
+    });
+
+    it('devuelve 404 por un pedido inexistente', async () => {
+      repository.buscarTitularPedido.mockResolvedValue(null);
+      await expect(service.consultarPorPedido(54, mesero)).rejects.toMatchObject({ status: 404 });
+      expect(repository.buscarPagoRelevante).not.toHaveBeenCalled();
+    });
+  });
+
   it('registra un pago cuando la pasarela responde correctamente', async () => {
     const resultado = await service.procesarPago(datos, usuario);
 
@@ -135,7 +177,10 @@ describe('PagosService - BE-16.1', () => {
       pedidoId: 54,
       idempotencyKey: datos.solicitudId,
       transaccionId: 'transaccion-test-01',
-      monto: 22.48,
+      monto: pedido.total,
+      pedidoActualizadoEn: pedido.actualizadoEn,
+      metodo: 'TARJETA',
+      detallePago: undefined,
       estado: EstadoPago.PENDIENTE,
       ticketSnapshot: {
         version: 1,
@@ -428,6 +473,7 @@ describe('PagosService - BE-16.1', () => {
       await expect(service.cambiarEstadoTransaccion(
         transaccionId,
         EstadoTransaccionSimulada.CONFIRMADO,
+        gerenteGeneral,
       )).rejects.toBe(error);
       expect(pedidosLlevar.confirmarPago).not.toHaveBeenCalled();
       expect(repository.obtenerEstado).not.toHaveBeenCalled();

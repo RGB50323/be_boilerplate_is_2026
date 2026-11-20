@@ -11,6 +11,8 @@ import {
   TipoPedido,
 } from '@PrismaClient';
 import { PrismaService } from '@Prisma/services';
+import { ItemNoPendienteError, PedidoFueraDeCocinaError } from '@Cocina/errors';
+import { PedidoCocinaRepository } from '../src/cocina/repositories/pedido-cocina.repository.js';
 import { ComprobantesRepository } from '../src/comprobantes/repositories/comprobantes.repository.js';
 import { ComprobantePdfGenerator } from '../src/comprobantes/services/comprobante-pdf.generator.js';
 import { ComprobantesService } from '../src/comprobantes/services/comprobantes.service.js';
@@ -163,6 +165,198 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
   const gerente = { rol: Rol.GERENTE_GENERAL } as Parameters<
     PagosService['procesarPago']
   >[1];
+
+  it('cocina cierra LLEVAR pagado solo al completar el ultimo item y conserva el PDF', async () => {
+    const orden = await pedido(TipoPedido.LLEVAR);
+    const cliente = { rol: Rol.CLIENTE, id: clienteId } as typeof gerente;
+    const entrada = solicitud(orden.id);
+    await prisma.pedido.update({
+      where: { id: orden.id },
+      data: {
+        total: 35,
+        subtotal: 35,
+        detalles: {
+          create: { platilloId, cantidad: 1, precioUnitario: '17.50' },
+        },
+      },
+    });
+    entrada.ticket.total = 35;
+    entrada.ticket.items.push({ ...entrada.ticket.items[0]! });
+    const pago = await pagos.procesarPago(entrada, cliente);
+    await pagos.cambiarEstadoTransaccion(
+      pago.transaccionId!,
+      EstadoTransaccionSimulada.CONFIRMADO,
+      gerente,
+    );
+    const [primero, ultimo] = await prisma.detallePedido.findMany({
+      where: { pedidoId: orden.id },
+      orderBy: { id: 'asc' },
+    });
+    const cocina = new PedidoCocinaRepository(prisma as PrismaService);
+    expect(await cocina.marcarItemListo(primero.id, sucursalId)).toMatchObject({
+      pedidoEstado: EstadoPedido.RECIBIDO,
+      pedidoCompletado: false,
+    });
+    const resultados = await Promise.allSettled([
+      cocina.marcarItemListo(ultimo.id, sucursalId),
+      cocina.marcarItemListo(ultimo.id, sucursalId),
+    ]);
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toEqual([
+      expect.objectContaining({
+        value: expect.objectContaining({ pedidoEstado: EstadoPedido.CERRADO }),
+      }),
+    ]);
+    await expect(
+      cocina.marcarItemListo(ultimo.id, sucursalId),
+    ).rejects.toBeInstanceOf(ItemNoPendienteError);
+    const seguimiento = await llevar.obtenerSeguimiento(orden.id, cliente);
+    expect(seguimiento).toMatchObject({
+      estado: EstadoPedido.CERRADO,
+      pago: EstadoPago.CONFIRMADO,
+      comprobanteId: expect.any(Number),
+    });
+    const pdf = await comprobantes.descargarPdf(
+      seguimiento.comprobanteId!,
+      cliente,
+    );
+    expect(pdf.buffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(await prisma.pago.count({ where: { pedidoId: orden.id } })).toBe(1);
+    expect(
+      await prisma.comprobante.count({ where: { ticketId: orden.id } }),
+    ).toBe(1);
+  });
+
+  it('mantiene LLEVAR sin pago confirmado en LISTO y lo cierra al confirmar el pago existente', async () => {
+    const orden = await pedido(TipoPedido.LLEVAR);
+    const cliente = { rol: Rol.CLIENTE, id: clienteId } as typeof gerente;
+    const pago = await pagos.procesarPago(solicitud(orden.id), cliente);
+    // Caso historico con preparacion iniciada y pago previo aun pendiente.
+    await prisma.pedido.update({
+      where: { id: orden.id },
+      data: { estado: EstadoPedido.EN_PREPARACION },
+    });
+    const item = await prisma.detallePedido.findFirstOrThrow({
+      where: { pedidoId: orden.id },
+    });
+    const cocina = new PedidoCocinaRepository(prisma as PrismaService);
+    expect(await cocina.marcarItemListo(item.id, sucursalId)).toMatchObject({
+      pedidoEstado: EstadoPedido.LISTO,
+    });
+    expect(
+      await prisma.comprobante.count({ where: { ticketId: orden.id } }),
+    ).toBe(0);
+    await pagos.cambiarEstadoTransaccion(
+      pago.transaccionId!,
+      EstadoTransaccionSimulada.CONFIRMADO,
+      gerente,
+    );
+    expect(await llevar.obtenerSeguimiento(orden.id, cliente)).toMatchObject({
+      estado: EstadoPedido.CERRADO,
+      pago: EstadoPago.CONFIRMADO,
+      comprobanteId: expect.any(Number),
+    });
+  });
+
+  it.each([EstadoPedido.EN_PREPARACION, EstadoPedido.CANCELADO])(
+    'cocina preserva las reglas MESA en %s',
+    async (estado) => {
+      const orden = await pedido(TipoPedido.MESA);
+      await prisma.pedido.update({ where: { id: orden.id }, data: { estado } });
+      await prisma.detallePedido.updateMany({
+        where: { pedidoId: orden.id },
+        data: { estado: EstadoItem.PENDIENTE },
+      });
+      const item = await prisma.detallePedido.findFirstOrThrow({
+        where: { pedidoId: orden.id },
+      });
+      const cocina = new PedidoCocinaRepository(prisma as PrismaService);
+      if (estado === EstadoPedido.CANCELADO) {
+        await expect(
+          cocina.marcarItemListo(item.id, sucursalId),
+        ).rejects.toBeInstanceOf(PedidoFueraDeCocinaError);
+        expect(
+          await prisma.detallePedido.findUnique({ where: { id: item.id } }),
+        ).toMatchObject({ estado: EstadoItem.PENDIENTE });
+      } else {
+        // Incluso con un pago confirmado de prueba, cocina no cierra MESA.
+        await prisma.pago.create({
+          data: {
+            pedidoId: orden.id,
+            idempotencyKey: randomUUID(),
+            monto: '17.50',
+            estado: EstadoPago.CONFIRMADO,
+          },
+        });
+        expect(await cocina.marcarItemListo(item.id, sucursalId)).toMatchObject(
+          { pedidoEstado: EstadoPedido.LISTO },
+        );
+      }
+    },
+  );
+
+  it('recupera por pedido el ultimo rechazo, un pago pendiente, el confirmado y el reembolsado', async () => {
+    const mesa = await pedido(TipoPedido.MESA);
+    const otroPedido = await pedido(TipoPedido.MESA);
+    const mesero = { rol: Rol.MESERO, sucursalId } as typeof gerente;
+    expect(await pagos.consultarPorPedido(mesa.id, mesero)).toEqual({
+      pago: null,
+    });
+
+    const intento = await pagos.procesarPago(solicitud(mesa.id), gerente);
+    await pagos.cambiarEstadoTransaccion(
+      intento.transaccionId!,
+      EstadoTransaccionSimulada.RECHAZADO,
+      gerente,
+    );
+    expect(await pagos.consultarPorPedido(mesa.id, mesero)).toMatchObject({
+      pagoId: intento.pagoId,
+      estado: EstadoPago.RECHAZADO,
+      comprobanteId: null,
+    });
+
+    const nuevo = await pagos.procesarPago(solicitud(mesa.id), gerente);
+    expect(await pagos.consultarPorPedido(mesa.id, mesero)).toEqual({
+      pagoId: nuevo.pagoId,
+      pedidoId: mesa.id,
+      transaccionId: nuevo.transaccionId,
+      estado: EstadoPago.PENDIENTE,
+      metodo: 'TARJETA',
+      comprobanteId: null,
+    });
+    expect(await pagos.consultarPorPedido(otroPedido.id, mesero)).toEqual({
+      pago: null,
+    });
+    const confirmado = await pagos.cambiarEstadoTransaccion(
+      nuevo.transaccionId!,
+      EstadoTransaccionSimulada.CONFIRMADO,
+      gerente,
+    );
+    await prisma.pago.create({
+      data: {
+        pedidoId: mesa.id,
+        idempotencyKey: randomUUID(),
+        monto: 1,
+        estado: EstadoPago.RECHAZADO,
+        creadoEn: new Date(Date.now() + 1000),
+      },
+    });
+    expect(await pagos.consultarPorPedido(mesa.id, mesero)).toMatchObject({
+      pagoId: nuevo.pagoId,
+      estado: EstadoPago.CONFIRMADO,
+      comprobanteId: confirmado.comprobanteId,
+    });
+    expect(confirmado.comprobanteId).toEqual(expect.any(Number));
+    await pagos.cambiarEstadoTransaccion(
+      nuevo.transaccionId!,
+      EstadoTransaccionSimulada.REEMBOLSADO,
+      gerente,
+    );
+    expect(await pagos.consultarPorPedido(mesa.id, mesero)).toMatchObject({
+      pagoId: nuevo.pagoId,
+      estado: EstadoPago.REEMBOLSADO,
+      comprobanteId: confirmado.comprobanteId,
+    });
+  });
 
   it('retoma una tarjeta persistida tras reiniciar y dos trabajadores emiten un solo comprobante', async () => {
     const mesa = await pedido(TipoPedido.MESA);
