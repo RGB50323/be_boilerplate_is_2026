@@ -1,4 +1,9 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { Rol, type User } from '@PrismaClient';
 import { DashboardRepository } from '@Dashboard/repositories';
 import {
   armarFranjas,
@@ -31,6 +36,40 @@ describe('DashboardService', () => {
     repo.ventasConfirmadasDetalle.mockReset().mockResolvedValue([]);
     repo.contarVentasConfirmadas.mockReset().mockResolvedValue(0);
     service = new DashboardService(repo as unknown as DashboardRepository);
+  });
+
+  describe('limitarAlcance', () => {
+    const rango = { desde: '2026-11-01', hasta: '2026-11-08' };
+    const con = (rol: Rol, sucursalId: number | null) => ({ rol, sucursalId }) as User;
+
+    it('el gerente general consulta lo que pide', () => {
+      expect(service.limitarAlcance(rango, con(Rol.GERENTE_GENERAL, null))).toEqual(rango);
+      expect(
+        service.limitarAlcance({ ...rango, sucursalId: 2 }, con(Rol.GERENTE_GENERAL, null)),
+      ).toEqual({ ...rango, sucursalId: 2 });
+    });
+
+    it('el gerente queda limitado a su sucursal', () => {
+      expect(service.limitarAlcance(rango, con(Rol.GERENTE, 1))).toEqual({
+        ...rango,
+        sucursalId: 1,
+      });
+      expect(
+        service.limitarAlcance({ ...rango, sucursalId: 1 }, con(Rol.GERENTE, 1)),
+      ).toEqual({ ...rango, sucursalId: 1 });
+    });
+
+    it('el gerente no puede pedir otra sucursal', () => {
+      expect(() =>
+        service.limitarAlcance({ ...rango, sucursalId: 2 }, con(Rol.GERENTE, 1)),
+      ).toThrow(ForbiddenException);
+    });
+
+    it('el gerente sin sucursal recibe 403', () => {
+      expect(() => service.limitarAlcance(rango, con(Rol.GERENTE, null))).toThrow(
+        ForbiddenException,
+      );
+    });
   });
 
   it('rechaza una fecha final anterior a la inicial sin consultar la base', async () => {
