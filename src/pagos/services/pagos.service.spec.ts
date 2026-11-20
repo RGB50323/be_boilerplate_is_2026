@@ -34,6 +34,7 @@ describe('PagosService - BE-16.1', () => {
     buscarPagoRelevante: vi.fn(),
     buscarPorSolicitud: vi.fn(),
     buscarPedido: vi.fn(),
+    validarBeneficiario: vi.fn(),
     buscarPagoBloqueante: vi.fn(),
     crear: vi.fn(),
     buscarPorTransaccion: vi.fn(),
@@ -99,6 +100,7 @@ describe('PagosService - BE-16.1', () => {
 
     repository.buscarPorSolicitud.mockResolvedValue(null);
     repository.buscarPedido.mockResolvedValue(pedido);
+    repository.validarBeneficiario.mockResolvedValue(usuario.id);
     repository.buscarPagoBloqueante.mockResolvedValue(null);
 
     pasarela.procesarPago.mockReturnValue({
@@ -175,6 +177,7 @@ describe('PagosService - BE-16.1', () => {
 
     expect(repository.crear).toHaveBeenCalledExactlyOnceWith({
       pedidoId: 54,
+      clienteLealtadId: pedido.clienteId,
       idempotencyKey: datos.solicitudId,
       transaccionId: 'transaccion-test-01',
       monto: pedido.total,
@@ -386,6 +389,7 @@ describe('PagosService - BE-16.1', () => {
         expect(repository.confirmarYEmitirComprobante).toHaveBeenCalledWith(
         transaccionId,
         EstadoPago.PENDIENTE,
+        true,
         );
         expect(repository.actualizarEstado).not.toHaveBeenCalled();
 
@@ -462,6 +466,7 @@ describe('PagosService - BE-16.1', () => {
         expect(repository.confirmarYEmitirComprobante).toHaveBeenCalledWith(
         transaccionId,
         EstadoPago.PENDIENTE,
+        true,
         );
     });
 

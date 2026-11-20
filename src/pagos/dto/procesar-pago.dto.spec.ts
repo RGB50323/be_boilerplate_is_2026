@@ -1,4 +1,4 @@
-﻿import 'reflect-metadata';
+import 'reflect-metadata';
 import { ApiValidationPipe } from '@Common/pipes';
 import { describe, expect, it } from 'vitest';
 import { ProcesarPagoDto } from './procesar-pago.dto.js';
@@ -27,7 +27,21 @@ describe('ProcesarPagoDto', () => {
     ).resolves.toMatchObject({ ticket });
   });
 
+  it('normaliza el correo opcional de lealtad', async () => {
+    await expect(
+      validar({
+        solicitudId: 'solicitud-88',
+        ticket,
+        correoLealtad: ' Cliente@Example.Test ',
+      }),
+    ).resolves.toMatchObject({ correoLealtad: 'cliente@example.test' });
+  });
+
   it.each([
+    { correoLealtad: 'invalido' },
+    { correoLealtad: null },
+    { correoLealtad: '' },
+    { clienteLealtadId: 'otro-cliente' },
     { ticket: undefined },
     { ticket: null },
     { ticket: [] },

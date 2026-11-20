@@ -46,6 +46,7 @@ model User {
 
   refreshTokens     RefreshToken[]
   pedidos           Pedido[]           @relation("PedidoCliente")
+  pagosLealtad      Pago[]
   pedidosTomados    Pedido[]           @relation("PedidoMesero")
   itemsEntregados   DetallePedido[]    @relation("ItemEntregadoPor")
   reservaciones     Reservacion[]
@@ -469,6 +470,11 @@ model Pago {
   pedido      Pedido       @relation(fields: [pedidoId], references: [id])
   comprobante Comprobante?
 
+  correoLealtad    String?             @map("correo_lealtad") @db.VarChar(254)
+  clienteLealtadId String?             @map("cliente_lealtad_id") @db.Uuid
+  clienteLealtad   User?               @relation(fields: [clienteLealtadId], references: [id], onDelete: Restrict)
+  acreditacion     AcreditacionPuntos?
+
   @@unique([transaccionId, pedidoId])
   @@index([pedidoId, estado])
   @@index([estado, confirmadoEn])
@@ -508,6 +514,7 @@ model CuentaPuntos {
 
   cliente     User               @relation(fields: [clienteId], references: [id])
   movimientos MovimientoPuntos[]
+  acreditaciones AcreditacionPuntos[]
 
   @@map("cuenta_puntos")
 }
@@ -522,6 +529,7 @@ model ReglaPuntos {
   creadaEn        DateTime  @default(now()) @map("creada_en")
 
   movimientos MovimientoPuntos[]
+  acreditaciones AcreditacionPuntos[]
 
   @@index([activa, vigenteDesde])
   @@map("regla_puntos")
@@ -585,6 +593,37 @@ model MovimientoPuntos {
   @@unique([pedidoId, tipo])
   @@index([cuentaPuntosId, fecha(sort: Desc)])
   @@map("movimiento_puntos")
+}
+
+enum EstadoAcreditacionPuntos {
+  PENDIENTE
+  LIBERADA
+  CANCELADA
+
+  @@map("estado_acreditacion_puntos")
+}
+
+model AcreditacionPuntos {
+  id             Int                      @id @default(autoincrement())
+  cuentaPuntosId Int                      @map("cuenta_puntos_id")
+  pagoId         Int                      @unique @map("pago_id")
+  reglaId        Int                      @map("regla_id")
+  puntosPorDolar Int                      @map("puntos_por_dolar")
+  puntosExactos  Decimal                  @map("puntos_exactos") @db.Decimal(13, 2)
+  puntos         Int
+  confirmadoEn   DateTime                 @map("confirmado_en")
+  liberableEn    DateTime                 @map("liberable_en")
+  estado         EstadoAcreditacionPuntos @default(PENDIENTE)
+  liberadaEn     DateTime?                @map("liberada_en")
+  canceladaEn    DateTime?                @map("cancelada_en")
+
+  cuenta CuentaPuntos @relation(fields: [cuentaPuntosId], references: [id])
+  pago   Pago         @relation(fields: [pagoId], references: [id])
+  regla  ReglaPuntos  @relation(fields: [reglaId], references: [id], onDelete: Restrict)
+
+  @@index([estado, liberableEn, id])
+  @@index([cuentaPuntosId, confirmadoEn(sort: Desc)])
+  @@map("acreditacion_puntos")
 }
 
 model HistorialLealtad {

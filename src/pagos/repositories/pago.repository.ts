@@ -1,9 +1,10 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, Inject } from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
 import { isDeepStrictEqual } from 'node:util';
 import { EstadoPago, EstadoPedido, TipoPedido, Prisma } from '@PrismaClient';
 import { ComprobantesService } from '../../comprobantes/services/comprobantes.service.js';
 import type { TicketSnapshot } from '../types/ticket-snapshot.js';
+import { AcreditacionesService } from '../../lealtad/services/acreditaciones.service.js';
 import { cerrarPedidoLlevarListo } from '../../pedidos/utils/cerrar-pedido-llevar.js';
 
 //----------------------------------------------------------------------------
@@ -18,6 +19,8 @@ interface CrearPagoData {
   ticketSnapshot: TicketSnapshot;
   metodo: 'EFECTIVO' | 'TARJETA';
   detallePago?: Prisma.InputJsonObject;
+  correoLealtad?: string;
+  clienteLealtadId?: string | null;
 }
 
 //----------------------------------------------------------------------------
@@ -27,7 +30,12 @@ export class PagoRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly comprobantesService: ComprobantesService,
+    @Inject(AcreditacionesService) private readonly acreditaciones: AcreditacionesService,
   ) {}
+
+  validarBeneficiario(identidad: { correo: string } | { id: string }) {
+    return this.acreditaciones.validarBeneficiario(identidad);
+  }
 
   // Buscar una operación previamente registrada
   buscarPorSolicitud(idempotencyKey: string) {
@@ -94,12 +102,13 @@ export class PagoRepository {
         throw new ConflictException('El pedido ya tiene un pago bloqueante');
       }
 
+      const confirmadoEn = data.estado === EstadoPago.CONFIRMADO
+        ? await this.acreditaciones.fijarConfirmacion(tx, data.clienteLealtadId != null)
+        : null;
       const pago = await tx.pago.create({
         data: {
           ...datosPago,
-          ...(data.estado === EstadoPago.CONFIRMADO
-            ? { confirmadoEn: new Date() }
-            : {}),
+          confirmadoEn,
         },
         include: { comprobante: { select: { id: true } } },
       });
@@ -161,11 +170,16 @@ export class PagoRepository {
   // el estado que se verificó anteriormente
   // Una sola transacción PostgreSQL vincula la confirmación con la emisión.
   // Si falta el ticket validado o H17 falla, se revierte el cambio de estado.
-  confirmarYEmitirComprobante(transaccionId: string, estadoActual: EstadoPago) {
+  confirmarYEmitirComprobante(
+    transaccionId: string,
+    estadoActual: EstadoPago,
+    requiereRegla: boolean,
+  ) {
     return this.prisma.$transaction(async (tx) => {
+      const confirmadoEn = await this.acreditaciones.fijarConfirmacion(tx, requiereRegla);
       const resultado = await tx.pago.updateMany({
         where: { transaccionId, estado: estadoActual },
-        data: { estado: EstadoPago.CONFIRMADO, confirmadoEn: new Date() },
+        data: { estado: EstadoPago.CONFIRMADO, confirmadoEn },
       });
 
       if (resultado.count === 0) return resultado;
@@ -185,6 +199,9 @@ export class PagoRepository {
       pedidoId: number;
       ticketSnapshot: Prisma.JsonValue;
       detallePago: Prisma.JsonValue;
+      clienteLealtadId: string | null;
+      confirmadoEn: Date | null;
+      monto: Prisma.Decimal;
     },
     transaccionId: string,
   ) {
@@ -196,7 +213,7 @@ export class PagoRepository {
 
     const pedido = await tx.pedido.findUniqueOrThrow({
       where: { id: pago.pedidoId },
-      select: { tipo: true, estado: true },
+      select: { tipo: true, estado: true, clienteId: true },
     });
     if (pedido.tipo === TipoPedido.MESA) {
       const cierre = await tx.pedido.updateMany({
@@ -237,6 +254,15 @@ export class PagoRepository {
     ) {
       throw new ConflictException('El comprobante no coincide con el pago');
     }
+    // Los intentos LLEVAR anteriores a H18 ya tienen titular en el pedido.
+    const beneficiario = pago.clienteLealtadId ??
+      (pedido.tipo === TipoPedido.LLEVAR ? pedido.clienteId : null);
+    if (beneficiario) {
+      if (!pago.confirmadoEn) throw new Error('Falta la fecha de confirmación del pago.');
+      await this.acreditaciones.registrarConfirmacion(
+        tx, pago.id, beneficiario, pago.monto, pago.confirmadoEn,
+      );
+    }
     return { id: comprobante.id };
   }
 
@@ -245,17 +271,21 @@ export class PagoRepository {
     estadoActual: EstadoPago,
     estadoNuevo: Exclude<EstadoPago, 'CONFIRMADO'>,
   ) {
-    return this.prisma.pago.updateMany({
-      where: {
-        transaccionId,
-        estado: estadoActual,
-      },
-      data: {
-        estado: estadoNuevo,
-        ...(estadoNuevo === EstadoPago.REEMBOLSADO
-          ? { reembolsadoEn: new Date() }
-          : {}),
-      },
+    const where = { transaccionId, estado: estadoActual };
+    if (estadoNuevo !== EstadoPago.REEMBOLSADO) {
+      return this.prisma.pago.updateMany({ where, data: { estado: estadoNuevo } });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const reembolsadoEn = await this.acreditaciones.fijarReembolso(tx, transaccionId);
+      const resultado = await tx.pago.updateMany({
+        where,
+        data: { estado: estadoNuevo, reembolsadoEn },
+      });
+      if (resultado.count === 1) {
+        await this.acreditaciones.cancelarPendiente(tx, transaccionId, reembolsadoEn);
+      }
+      return resultado;
     });
   }
 
