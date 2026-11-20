@@ -63,6 +63,11 @@ describe('esComandoDestructivo', () => {
     [['migrate', 'reset', '--force']],
     [['db', 'push']],
     [['db', 'execute', '--file', 'x.sql']],
+    // Flags con valor antes del comando
+    [['--config', 'prisma.config.ts', 'migrate', 'reset']],
+    [['--schema', 'prisma/schema.prisma', 'migrate', 'dev']],
+    [['--config=prisma.config.ts', 'db', 'push']],
+    [['--schema=prisma/schema.prisma', 'migrate', 'reset', '--force']],
   ])('marca como destructivo %j', (args) => {
     expect(esComandoDestructivo(args)).toBe(true);
   });
@@ -73,6 +78,8 @@ describe('esComandoDestructivo', () => {
     [['db', 'seed']],
     [['generate']],
     [['studio']],
+    [['--config', 'prisma.config.ts', 'migrate', 'deploy']],
+    [['--config=prisma.config.ts', 'migrate', 'status']],
   ])('no marca %j', (args) => {
     expect(esComandoDestructivo(args)).toBe(false);
   });
@@ -97,6 +104,15 @@ describe('urlParaCliPrisma', () => {
     expect(() => urlParaCliPrisma(['migrate', 'dev'], sinLocal)).toThrow(
       /Falta LOCAL_DATABASE_URL/,
     );
+  });
+
+  it('con --config antes del comando igual exige LOCAL_DATABASE_URL', () => {
+    expect(() =>
+      urlParaCliPrisma(['--config', 'prisma.config.ts', 'migrate', 'reset'], {
+        DIRECT_URL:
+          'postgresql://u:p@aws-0-us-east-2.pooler.supabase.com:5432/postgres',
+      }),
+    ).toThrow(/prisma migrate reset/);
   });
 
   it('rechaza LOCAL_DATABASE_URL si no es local', () => {
