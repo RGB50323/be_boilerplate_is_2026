@@ -1,5 +1,7 @@
 # H20 · Persistencia de beneficios
 
+El contrato HTTP y las pruebas de la [API administrativa](./H20-beneficios-api.md) se documentan por separado.
+
 `Beneficio` conserva el ID, costo positivo, marcas administrativas y relación con canjes. El nombre y la descripción se leen de `Platillo`. El catálogo es global. Si PostgreSQL permite borrar físicamente un platillo, la FK deja `platilloId` en NULL y se conservan el beneficio, los canjes y los movimientos. Las FK de pedidos y reseñas siguen restringiendo el borrado.
 
 `Canje.nombreBeneficio` es nullable y admite 120 caracteres. H19 debe guardar el nombre del platillo al confirmar cada canje. Para canjes anteriores, la migración copia el último nombre legacy conocido cuando existe. Ese valor puede diferir del nombre a la fecha del canje. Considerar `NOT NULL` solo después de verificar la cobertura histórica y la escritura de H19.
