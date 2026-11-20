@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Rol, type User } from '@PrismaClient';
 import {
   DashboardRepository,
   type FilaVentasHora,
@@ -29,6 +31,19 @@ type Horario = { sucursalId: number; apertura: Date; cierre: Date };
 @Injectable()
 export class DashboardService {
   constructor(private readonly dashboardRepository: DashboardRepository) {}
+
+  /** El gerente de sucursal solo consulta su sucursal; el gerente general, todas. */
+  limitarAlcance<T extends DashboardRangoQueryDto>(query: T, usuario: User): T {
+    if (usuario.rol !== Rol.GERENTE) return query;
+    if (usuario.sucursalId === null) {
+      throw new ForbiddenException('No tienes una sucursal asignada.');
+    }
+    if (query.sucursalId !== undefined && query.sucursalId !== usuario.sucursalId) {
+      throw new ForbiddenException('Solo puedes consultar las ventas de tu sucursal.');
+    }
+    query.sucursalId = usuario.sucursalId;
+    return query;
+  }
 
   async ventas({
     diaSemana,

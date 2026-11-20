@@ -11,7 +11,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { Roles } from '@Auth/decorators';
+import { CurrentUser, Roles } from '@Auth/decorators';
 import {
   DashboardRangoQueryDto,
   DashboardVentasDetalleQueryDto,
@@ -20,13 +20,16 @@ import {
   VentasDetalleResponseDto,
 } from '@Dashboard/dto';
 import { DashboardService } from '@Dashboard/services';
-import { Rol } from '@PrismaClient';
+import { Rol, type User } from '@PrismaClient';
 
 @ApiTags('Dashboard')
 @ApiBearerAuth()
 // RolesGuard es global (app.module.ts): @Roles solo declara quién puede entrar.
-@Roles(Rol.GERENTE_GENERAL)
-@ApiForbiddenResponse({ description: 'Solo para GERENTE_GENERAL.' })
+@Roles(Rol.GERENTE_GENERAL, Rol.GERENTE)
+@ApiForbiddenResponse({
+  description:
+    'Rol distinto a GERENTE_GENERAL o GERENTE, gerente sin sucursal o gerente que pide otra sucursal.',
+})
 @Controller('dashboard')
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
@@ -36,7 +39,7 @@ export class DashboardController {
   @ApiOperation({
     summary: 'Dashboard de ventas por sucursal (H28)',
     description:
-      'Solo para el gerente general. Ventas = subtotal − descuentos, sin IVA ni propina, de pedidos con pago confirmado y sin reembolso. Fechas y horas en hora local de El Salvador.',
+      'Gerente general: todas las sucursales o la elegida. Gerente: solo su sucursal. Ventas = subtotal − descuentos, sin IVA ni propina, de pedidos con pago confirmado y sin reembolso. Fechas y horas en hora local de El Salvador.',
   })
   @ApiOkResponse({ type: DashboardVentasResponseDto })
   @ApiBadRequestResponse({
@@ -49,8 +52,11 @@ export class DashboardController {
   @ApiNotFoundResponse({ description: 'La sucursal solicitada no existe.' })
   ventas(
     @Query() query: DashboardVentasQueryDto,
+    @CurrentUser() usuario: User,
   ): Promise<DashboardVentasResponseDto> {
-    return this.dashboardService.ventas(query);
+    return this.dashboardService.ventas(
+      this.dashboardService.limitarAlcance(query, usuario),
+    );
   }
 
   @Get('ventas/detalle')
@@ -70,8 +76,11 @@ export class DashboardController {
   @ApiNotFoundResponse({ description: 'La sucursal solicitada no existe.' })
   ventasDetalle(
     @Query() query: DashboardVentasDetalleQueryDto,
+    @CurrentUser() usuario: User,
   ): Promise<VentasDetalleResponseDto> {
-    return this.dashboardService.ventasDetalle(query);
+    return this.dashboardService.ventasDetalle(
+      this.dashboardService.limitarAlcance(query, usuario),
+    );
   }
 
   @Get('ventas/exportar')
@@ -90,9 +99,12 @@ export class DashboardController {
   @ApiNotFoundResponse({ description: 'La sucursal solicitada no existe.' })
   async exportarVentas(
     @Query() query: DashboardRangoQueryDto,
+    @CurrentUser() usuario: User,
     @Res({ passthrough: true }) res: Response,
   ): Promise<string> {
-    const csv = await this.dashboardService.exportarVentasPorSucursalCsv(query);
+    const csv = await this.dashboardService.exportarVentasPorSucursalCsv(
+      this.dashboardService.limitarAlcance(query, usuario),
+    );
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
       'Content-Disposition',

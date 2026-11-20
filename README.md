@@ -401,9 +401,9 @@ Base: `http://localhost:3000/api/v1` · Documentación interactiva: `http://loca
 | `GET` | `/inventario/insumos/:id/movimientos` | Bearer · `GERENTE` | `200` | Historial paginado de movimientos del insumo (H14) |
 | `GET` | `/inventario/alertas` | Bearer · `GERENTE` | `200` | Alertas sin resolver de la sucursal del gerente (H15) |
 | `PATCH` | `/inventario/alertas/:id/vista` | Bearer · `GERENTE` | `200` | Marca una alerta como vista (H15) |
-| `GET` | `/dashboard/ventas` | Bearer · `GERENTE_GENERAL` | `200` | Ventas por sucursal con ticket promedio, total general, platillos y horarios pico |
-| `GET` | `/dashboard/ventas/detalle` | Bearer · `GERENTE_GENERAL` | `200` | Ventas confirmadas, una por pedido, paginadas |
-| `GET` | `/dashboard/ventas/exportar` | Bearer · `GERENTE_GENERAL` | `200` | CSV de ventas por sucursal y total general |
+| `GET` | `/dashboard/ventas` | Bearer · `GERENTE_GENERAL`, `GERENTE` | `200` | Ventas por sucursal con ticket promedio, total general, platillos y horarios pico |
+| `GET` | `/dashboard/ventas/detalle` | Bearer · `GERENTE_GENERAL`, `GERENTE` | `200` | Ventas confirmadas, una por pedido, paginadas |
+| `GET` | `/dashboard/ventas/exportar` | Bearer · `GERENTE_GENERAL`, `GERENTE` | `200` | CSV de ventas por sucursal y total general |
 
 ### Ejemplos
 
@@ -693,7 +693,10 @@ Cada movimiento de `POST /inventario/insumos/:id/movimientos` llama a `Evaluador
 
 ## Dashboard de ventas (H28)
 
-Solo para `GERENTE_GENERAL`: el controlador usa `@Roles(Rol.GERENTE_GENERAL)` y el `RolesGuard` global responde `403` a cualquier otro rol.
+Para `GERENTE_GENERAL` y `GERENTE`: el controlador usa `@Roles(Rol.GERENTE_GENERAL, Rol.GERENTE)` y el `RolesGuard` global responde `403` a cualquier otro rol.
+
+- El gerente general consulta todas las sucursales o la que indique en `sucursalId`.
+- El gerente de sucursal solo ve la suya: `DashboardService.limitarAlcance` fija `sucursalId` con la sucursal del usuario. Responde `403` si pide otra sucursal o si no tiene sucursal asignada.
 
 Las tres rutas reciben el mismo periodo: `desde` y `hasta` (`YYYY-MM-DD`, días completos en hora de El Salvador) y `sucursalId` opcional. Un rango con `hasta` anterior a `desde` responde `400` y una sucursal inexistente, `404`.
 

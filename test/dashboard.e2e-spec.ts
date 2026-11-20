@@ -12,7 +12,12 @@ import { AuthService } from '../dist/auth/services/auth.service.js';
 import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
 
 const hora = (value: string) => new Date(`1970-01-01T${value}:00Z`);
-const usuario = (rol: string) => ({ id: 'u-1', isActive: true, rol });
+const usuario = (rol: string, sucursalId: number | null = null) => ({
+  id: 'u-1',
+  isActive: true,
+  rol,
+  sucursalId,
+});
 
 const repo = {
   sucursalExiste: vi.fn(),
@@ -133,7 +138,7 @@ it('sin token responde 401', async () => {
   expect(repo.ventasPorSucursal).not.toHaveBeenCalled();
 });
 
-it.each(['CLIENTE', 'MESERO', 'COCINA', 'GERENTE'])(
+it.each(['CLIENTE', 'MESERO', 'COCINA'])(
   '%s recibe 403 y no se consulta la base',
   async (rol) => {
     buscarUsuario.mockResolvedValue(usuario(rol));
@@ -141,6 +146,34 @@ it.each(['CLIENTE', 'MESERO', 'COCINA', 'GERENTE'])(
     expect(repo.ventasPorSucursal).not.toHaveBeenCalled();
   },
 );
+
+describe('gerente de sucursal', () => {
+  it('recibe solo las ventas de su sucursal', async () => {
+    buscarUsuario.mockResolvedValue(usuario('GERENTE', 1));
+    await consultar().expect(200);
+    for (const consulta of [repo.ventasPorSucursal, repo.platillosVendidos]) {
+      expect(consulta).toHaveBeenCalledWith(expect.objectContaining({ sucursalId: 1 }));
+    }
+    expect(repo.horarios).toHaveBeenCalledWith(1, undefined);
+  });
+
+  it('puede pedir su propia sucursal', async () => {
+    buscarUsuario.mockResolvedValue(usuario('GERENTE', 1));
+    await consultar({ sucursalId: '1' }).expect(200);
+  });
+
+  it('403 si pide otra sucursal y no se consulta la base', async () => {
+    buscarUsuario.mockResolvedValue(usuario('GERENTE', 1));
+    await consultar({ sucursalId: '2' }).expect(403);
+    expect(repo.ventasPorSucursal).not.toHaveBeenCalled();
+  });
+
+  it('403 si no tiene sucursal asignada', async () => {
+    buscarUsuario.mockResolvedValue(usuario('GERENTE'));
+    await consultar().expect(403);
+    expect(repo.ventasPorSucursal).not.toHaveBeenCalled();
+  });
+});
 
 it('400 si la fecha final es anterior a la inicial', async () => {
   const r = await consultar({ desde: '2026-11-08', hasta: '2026-11-01' }).expect(400);
@@ -204,10 +237,20 @@ describe('GET /dashboard/ventas/detalle', () => {
     expect(r.body.errores[campo]).toBeTruthy();
   });
 
-  it('403 para un rol distinto de gerente general', async () => {
+  it('403 para un rol distinto de gerente', async () => {
     buscarUsuario.mockResolvedValue(usuario('MESERO'));
     await detalle().expect(403);
     expect(repo.ventasConfirmadasDetalle).not.toHaveBeenCalled();
+  });
+
+  it('el gerente solo ve las ventas de su sucursal', async () => {
+    buscarUsuario.mockResolvedValue(usuario('GERENTE', 3));
+    await detalle().expect(200);
+    expect(repo.ventasConfirmadasDetalle).toHaveBeenCalledWith(
+      expect.objectContaining({ sucursalId: 3 }),
+      { limite: 20, desplazamiento: 0 },
+    );
+    await detalle({ sucursalId: '1' }).expect(403);
   });
 
   it('401 sin token', async () => {
@@ -247,8 +290,17 @@ describe('GET /dashboard/ventas/exportar', () => {
     await exportar({ desde: '2026-11-08', hasta: '2026-11-01' }).expect(400);
   });
 
-  it('403 para un rol distinto de gerente general', async () => {
+  it('403 para un rol distinto de gerente', async () => {
     buscarUsuario.mockResolvedValue(usuario('COCINA'));
     await exportar().expect(403);
+  });
+
+  it('el gerente exporta solo su sucursal', async () => {
+    buscarUsuario.mockResolvedValue(usuario('GERENTE', 1));
+    await exportar().expect(200);
+    expect(repo.ventasPorSucursal).toHaveBeenCalledWith(
+      expect.objectContaining({ sucursalId: 1 }),
+    );
+    await exportar({ sucursalId: '2' }).expect(403);
   });
 });
