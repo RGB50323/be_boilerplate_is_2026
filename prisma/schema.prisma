@@ -532,8 +532,8 @@ model Beneficio {
   descripcion     String?   @db.VarChar(200)
   costoPuntos     Int       @map("costo_puntos")
   activo          Boolean   @default(true)
-  vigenteDesde    DateTime? @map("vigente_desde")
-  vigenteHasta    DateTime? @map("vigente_hasta")
+  vigenteDesde    DateTime  @map("vigente_desde")
+  vigenteHasta    DateTime  @map("vigente_hasta")
   creadoEn        DateTime  @default(now()) @map("creado_en")
   modificadoEn    DateTime? @map("modificado_en")
   deshabilitadoEn DateTime? @map("deshabilitado_en")
@@ -544,14 +544,15 @@ model Beneficio {
 }
 
 model Canje {
-  id             Int      @id @default(autoincrement())
-  clienteId      String   @map("cliente_id") @db.Uuid
-  beneficioId    Int      @map("beneficio_id")
-  codigo         String   @unique @db.VarChar(20)
-  puntosUsados   Int      @map("puntos_usados")
-  idempotencyKey String?  @unique @map("idempotency_key") @db.VarChar(64)
-  pedidoId       Int?     @map("pedido_id")
-  creadoEn       DateTime @default(now()) @map("creado_en")
+  id             Int       @id @default(autoincrement())
+  clienteId      String    @map("cliente_id") @db.Uuid
+  beneficioId    Int       @map("beneficio_id")
+  codigo         String    @unique @db.VarChar(20)
+  puntosUsados   Int       @map("puntos_usados")
+  idempotencyKey String?   @unique @map("idempotency_key") @db.VarChar(64)
+  pedidoId       Int?      @map("pedido_id")
+  creadoEn       DateTime  @default(now()) @map("creado_en")
+  utilizadoEn    DateTime? @map("utilizado_en")
 
   cliente     User               @relation(fields: [clienteId], references: [id])
   beneficio   Beneficio          @relation(fields: [beneficioId], references: [id])

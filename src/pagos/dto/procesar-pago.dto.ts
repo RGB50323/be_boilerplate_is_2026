@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsIn,
   IsDefined,
+  IsEmail,
   IsObject,
   ValidateIf,
   Matches,
@@ -52,6 +53,11 @@ export class TicketPagoDto {
 }
 
 export class ProcesarPagoDto {
+  @ValidateIf((_, valor: unknown) => valor !== undefined)
+  @IsEmail()
+  @MaxLength(254)
+  correoLealtad?: string;
+
   @ValidateIf((_, valor: unknown) => valor !== undefined)
   @IsIn(['EFECTIVO', 'TARJETA'])
   metodo?: 'EFECTIVO' | 'TARJETA';
