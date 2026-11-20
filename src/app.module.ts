@@ -22,6 +22,7 @@ import { PlatillosModule } from '@Platillos';
 import { PedidosModule } from '@Pedidos';
 import { ResenasModule } from '@Resenas';
 import { OcupacionModule } from '@Ocupacion';
+import { BeneficiosModule } from './beneficios/beneficios.module.js';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { OcupacionModule } from '@Ocupacion';
     PedidosModule,
     ResenasModule,
     OcupacionModule,
+    BeneficiosModule,
   ],
   providers: [
     {
