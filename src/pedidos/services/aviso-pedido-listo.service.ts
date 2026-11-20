@@ -34,7 +34,8 @@ export class AvisoPedidoListoService {
     if (
       pedido === null ||
       pedido.tipo !== TipoPedido.LLEVAR ||
-      pedido.estado !== EstadoPedido.LISTO ||
+      (pedido.estado !== EstadoPedido.LISTO &&
+        pedido.estado !== EstadoPedido.CERRADO) ||
       pedido.clienteId === null
     ) {
       return false;

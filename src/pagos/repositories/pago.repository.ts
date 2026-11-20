@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { EstadoPago, EstadoPedido, TipoPedido, Prisma } from '@PrismaClient';
 import { ComprobantesService } from '../../comprobantes/services/comprobantes.service.js';
 import type { TicketSnapshot } from '../types/ticket-snapshot.js';
+import { cerrarPedidoLlevarListo } from '../../pedidos/utils/cerrar-pedido-llevar.js';
 
 //----------------------------------------------------------------------------
 
@@ -205,10 +206,22 @@ export class PagoRepository {
       if (cierre.count !== 1) {
         throw new ConflictException('El pedido de mesa debe estar entregado');
       }
-    } else if (pedido.estado !== EstadoPedido.PENDIENTE_PAGO) {
-      throw new ConflictException(
-        'El pedido para llevar no está pendiente de pago',
-      );
+    } else {
+      // Comparte el bloqueo del pedido con cocina al resolver el último ítem.
+      const [actual] = await tx.$queryRaw<
+        { estado: EstadoPedido }[]
+      >(Prisma.sql`
+        SELECT estado::text AS estado FROM pedido
+        WHERE id = ${pago.pedidoId} FOR NO KEY UPDATE
+      `);
+      if (
+        actual?.estado !== EstadoPedido.PENDIENTE_PAGO &&
+        !(await cerrarPedidoLlevarListo(tx, pago.pedidoId))
+      ) {
+        throw new ConflictException(
+          'El pedido para llevar no está pendiente de pago ni listo para cerrar',
+        );
+      }
     }
 
     const comprobante = await this.comprobantesService.emitir(tx, {
@@ -266,6 +279,30 @@ export class PagoRepository {
     });
   }
 
+  buscarTitularPedido(id: number) {
+    return this.prisma.pedido.findUnique({
+      where: { id },
+      select: { tipo: true, sucursalId: true, clienteId: true },
+    });
+  }
+
+  buscarPagoRelevante(pedidoId: number) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const bloqueante = await this.buscarPagoBloqueante(pedidoId, tx);
+        return (
+          bloqueante ??
+          tx.pago.findFirst({
+            where: { pedidoId, estado: EstadoPago.RECHAZADO },
+            include: { comprobante: { select: { id: true } } },
+            orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }],
+          })
+        );
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+
   // Buscar un pago que impida iniciar otro cobro
   // utilizando el mismo pedido/ticket
   buscarPagoBloqueante(
@@ -283,9 +320,8 @@ export class PagoRepository {
           ],
         },
       },
-      orderBy: {
-        creadoEn: 'desc',
-      },
+      include: { comprobante: { select: { id: true } } },
+      orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }],
     });
   }
 }

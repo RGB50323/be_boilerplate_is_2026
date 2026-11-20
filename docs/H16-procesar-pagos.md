@@ -91,6 +91,9 @@ Si la confirmación de LLEVAR qued? guardada pero falló su paso a `RECIBIDO`, e
 
 ## Consultar y confirmar
 
+- `GET /api/v1/pagos/pedido/:pedidoId` devuelve HTTP 200. Un pedido autorizado sin pagos devuelve `{"pago":null}`. Cuando hay pago, devuelve `pagoId`, `pedidoId`, `transaccionId`, `estado`, `metodo` y `comprobanteId`. Los identificadores de transacción, método y comprobante pueden ser nulos. Un pedido inexistente devuelve 404 y uno fuera del alcance del usuario devuelve 403.
+- Para recuperar un cobro tras un 409, la consulta prioriza el pago más reciente en `PENDIENTE`, `CONFIRMADO` o `REEMBOLSADO`. Si no existe un pago bloqueante, devuelve el último `RECHAZADO`. En un empate de fecha, prevalece el ID más alto. El mesero consulta pedidos MESA de su sucursal, el gerente consulta su sucursal, el gerente general tiene acceso global y el cliente consulta sus propios pedidos LLEVAR.
+
 - `GET /api/v1/pagos/transaccion/:transaccionId` devuelve 200, el estado registrado y `comprobanteId`. Pueden usarlo gerencia y, para pedidos MESA, un mesero de la misma sucursal.
 - `PATCH /api/v1/pagos/transaccion/:transaccionId/estado` devuelve 200. Solo gerencia puede actualizar la transacción de tarjeta simulada. Ejemplo de confirmación: `{"estado":"CONFIRMADO"}`. El simulador permite `PENDIENTE → CONFIRMADO`, `PENDIENTE → RECHAZADO` y `CONFIRMADO → REEMBOLSADO`.
 - `GET /api/v1/pedidos/:id/seguimiento` devuelve al cliente propietario el pedido LLEVAR y los campos `pago` y `comprobanteId` del último intento. Tras una confirmación, H05 pasa el pedido a `RECIBIDO`. H16 deja el cierre final de LLEVAR a la futura integración de entrega.
