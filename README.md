@@ -129,7 +129,7 @@ La API se conecta con `sslmode=verify-full`: la conexión va cifrada, se valida 
 - **Todo lo que borra datos va a la base local de Docker, nunca a Supabase.** [prisma.config.ts](prisma.config.ts) manda `migrate dev`, `migrate reset`, `db push` y `db execute` a `LOCAL_DATABASE_URL`. Esa variable es obligatoria para esos comandos (no se usa `DIRECT_URL` ni `DATABASE_URL` como respaldo) y tiene que apuntar a `localhost`, `127.0.0.1` o `::1`; si no, el comando falla. Las reglas están en [prisma/destinos-base.ts](prisma/destinos-base.ts) y sus pruebas en `destinos-base.spec.ts`.
 - **Las migraciones se aplican a Supabase solo desde `development`**, después de mergear el PR que las trae, con `npm run prisma:deploy`. Lo hace quien mergea y avisa al equipo.
 - **Después de cada merge con migraciones**, todos hacen `git pull` y `npm ci` (o `npx prisma generate`) para que su cliente de Prisma conozca las columnas nuevas.
-- **El seed es idempotente**, pero se corre solo cuando cambia (`npm run db:seed`) y avisando: modifica datos que otros están usando.
+- **El seed no duplica datos, pero restaura los de ejemplo.** Cada corrida devuelve a su estado inicial los pedidos de ejemplo (C-, E- y R-) y las reseñas de demo; si alguien los estaba usando, pierde esos cambios. Se corre solo cuando cambia (`npm run db:seed`) y avisando al equipo.
 - **Los datos de prueba son de todos.** Si necesitás un escenario raro (borrar, dejar estados inconsistentes), hacelo en la base local.
 
 ### Cambiar el schema (nueva migración)

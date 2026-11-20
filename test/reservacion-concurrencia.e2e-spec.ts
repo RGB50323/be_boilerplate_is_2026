@@ -18,7 +18,7 @@ import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
 import { urlPruebaTemporal } from '../prisma/destinos-base.js';
 
 // Corre en su base temporal h10_test: `npm run test:e2e` (proyecto h10 de vitest.config.e2e.ts) la crea, la migra y fija TEST_DATABASE_URL
-// Si TEST_DATABASE_URL apunta a un servidor que no es local, falla antes de tocar nada. 
+// Si TEST_DATABASE_URL apunta a un servidor que no es local, falla antes de tocar nada.
 const url = urlPruebaTemporal('h10', process.env);
 describe.skipIf(!url)('H10 con PostgreSQL real', () => {
   let prisma: PrismaClient;

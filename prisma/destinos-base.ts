@@ -37,13 +37,11 @@ export const PRUEBAS_TEMPORALES = {
 
 export type HistoriaTemporal = keyof typeof PRUEBAS_TEMPORALES;
 
-/** Comandos del CLI de Prisma que pueden borrar datos o ejecutar SQL arbitrario. */
-const COMANDOS_DESTRUCTIVOS = new Set([
-  'migrate dev',
-  'migrate reset',
-  'db push',
-  'db execute',
-]);
+/** Comandos del CLI de Prisma que pueden borrar datos o ejecutar SQL arbitrario, por grupo. */
+const COMANDOS_DESTRUCTIVOS: Record<string, string[]> = {
+  migrate: ['dev', 'reset'],
+  db: ['push', 'execute'],
+};
 
 /** true si la URL es de PostgreSQL y apunta a localhost, 127.0.0.1 o ::1. */
 export function esDestinoLocal(url: string | undefined): boolean {
@@ -84,16 +82,23 @@ export function exigirBaseLocal(
   return url;
 }
 
-/** Nombre del comando de Prisma (`migrate dev`, `db seed`, …) a partir de los argumentos del CLI. */
-export function comandoPrisma(args: string[]): string {
-  return args
-    .filter((arg) => !arg.startsWith('-'))
-    .slice(0, 2)
-    .join(' ');
+/**
+ * Comando destructivo de Prisma (`migrate dev`, `db push`, …) presente en los
+ * argumentos, o null. No depende de la posición: los valores de flags como
+ * `--config prisma.config.ts` o `--schema <ruta>` pueden ir antes del comando.
+ */
+function comandoDestructivo(args: string[]): string | null {
+  const palabras = args.filter((arg) => !arg.startsWith('-'));
+  for (const [grupo, subcomandos] of Object.entries(COMANDOS_DESTRUCTIVOS)) {
+    if (!palabras.includes(grupo)) continue;
+    const sub = subcomandos.find((s) => palabras.includes(s));
+    if (sub) return `${grupo} ${sub}`;
+  }
+  return null;
 }
 
 export function esComandoDestructivo(args: string[]): boolean {
-  return COMANDOS_DESTRUCTIVOS.has(comandoPrisma(args));
+  return comandoDestructivo(args) !== null;
 }
 
 /**
@@ -102,11 +107,12 @@ export function esComandoDestructivo(args: string[]): boolean {
  * - El resto (migrate deploy, migrate status, studio, db seed…): DIRECT_URL o DATABASE_URL.
  */
 export function urlParaCliPrisma(args: string[], entorno: Entorno): string {
-  if (esComandoDestructivo(args)) {
+  const destructivo = comandoDestructivo(args);
+  if (destructivo) {
     return exigirBaseLocal(
       'LOCAL_DATABASE_URL',
       entorno.LOCAL_DATABASE_URL,
-      `"prisma ${comandoPrisma(args)}" puede borrar datos y solo corre contra la base local.`,
+      `"prisma ${destructivo}" puede borrar datos y solo corre contra la base local.`,
     );
   }
   return entorno.DIRECT_URL || entorno.DATABASE_URL || '';
