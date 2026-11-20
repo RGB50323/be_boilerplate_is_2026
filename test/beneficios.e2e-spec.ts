@@ -146,6 +146,9 @@ describe.skipIf(!url)('H20 administración de beneficios en PostgreSQL', () => {
     }
   });
 
+  beforeEach(() => vi.setSystemTime(new Date('2026-11-26T05:59:59.999Z')));
+  afterEach(() => vi.useRealTimers());
+
   const cliente = () => request(app.getHttpServer());
   const autorizar = (rol: Rol = Rol.GERENTE) =>
     `Bearer ${usuarios.get(rol)!.token}`;
@@ -156,16 +159,42 @@ describe.skipIf(!url)('H20 administración de beneficios en PostgreSQL', () => {
     vigenteHasta: '2026-11-25',
   });
 
-  async function crear(rol: Rol = Rol.GERENTE) {
+  async function crear(rol: Rol = Rol.GERENTE, cuerpo = datos()) {
     const res = await cliente()
       .post(ruta)
       .set('Authorization', autorizar(rol))
-      .send(datos())
+      .send(cuerpo)
       .expect(201);
     const id = Number(res.body.id);
     beneficios.push(id);
     return { id, body: res.body as Record<string, unknown> };
   }
+
+  it('acepta el día actual y un día futuro y rechaza el día anterior al cruzar la medianoche local', async () => {
+    await crear();
+    const futuro = await crear(Rol.GERENTE, {
+      ...datos(),
+      vigenteDesde: '2026-11-27',
+      vigenteHasta: '2026-11-27',
+    });
+    expect(futuro.body).toMatchObject({
+      vigenteDesde: '2026-11-27',
+      vigenteHasta: '2026-11-27',
+    });
+
+    vi.setSystemTime(new Date('2026-11-26T06:00:00.000Z'));
+    const pasado = await cliente()
+      .post(ruta)
+      .set('Authorization', autorizar())
+      .send(datos())
+      .expect(400);
+    expect(pasado.body).toMatchObject({
+      errores: {
+        vigenteDesde:
+          'La fecha inicial no puede ser anterior al día actual de El Salvador.',
+      },
+    });
+  });
 
   it('aplica JWT y la lista de roles a los seis endpoints', async () => {
     const consultas = () => [
@@ -383,6 +412,7 @@ describe.skipIf(!url)('H20 administración de beneficios en PostgreSQL', () => {
 
   it('edita asociación y vigencia sin alterar los canjes y conserva el registro tras la baja', async () => {
     const { id } = await crear();
+    vi.setSystemTime(new Date('2026-11-26T06:00:00.000Z'));
     const canje = await prisma.canje.create({
       data: {
         beneficioId: id,

@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EstadoBeneficio } from '../dto/beneficio.dto.js';
 import type {
   BeneficioConPlatillo,
@@ -43,6 +43,7 @@ describe('BeneficiosService', () => {
   );
 
   beforeEach(() => {
+    vi.setSystemTime(new Date('2026-11-26T05:59:59.999Z'));
     vi.resetAllMocks();
     repo.existePlatillo.mockResolvedValue(true);
     repo.crear.mockResolvedValue(registro);
@@ -53,6 +54,35 @@ describe('BeneficiosService', () => {
           actual: BeneficioConPlatillo,
         ) => Partial<BeneficioConPlatillo>,
       ) => Promise.resolve({ ...registro, ...preparar(registro) }),
+    );
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('rechaza con error de campo un inicio anterior al día local', async () => {
+    await expect(
+      servicio.crear({ ...dto, vigenteDesde: '2026-11-24' }),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: {
+        errores: { vigenteDesde: expect.stringContaining('El Salvador') },
+      },
+    });
+    expect(repo.existePlatillo).not.toHaveBeenCalled();
+    expect(repo.crear).not.toHaveBeenCalled();
+  });
+
+  it('acepta un día futuro y respeta la medianoche de El Salvador', async () => {
+    await servicio.crear({ ...dto, vigenteDesde: '2026-11-27' });
+    expect(repo.crear).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vigenteDesde: new Date('2026-11-27T06:00:00.000Z'),
+      }),
+    );
+
+    vi.setSystemTime(new Date('2026-11-26T06:00:00.000Z'));
+    await expect(servicio.crear(dto)).rejects.toBeInstanceOf(
+      BadRequestException,
     );
   });
 
@@ -92,6 +122,7 @@ describe('BeneficiosService', () => {
   });
 
   it('valida el intervalo combinado al modificar una sola fecha', async () => {
+    vi.setSystemTime(new Date('2026-11-26T06:00:00.000Z'));
     await expect(
       servicio.editar(1, { vigenteDesde: '2026-12-01' }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -124,12 +155,8 @@ describe('BeneficiosService', () => {
     ['2026-12-01T05:59:59.999Z', EstadoBeneficio.VIGENTE],
     ['2026-12-01T06:00:00.000Z', EstadoBeneficio.VENCIDO],
   ])('clasifica %s como %s', async (hora, estado) => {
-    vi.useFakeTimers().setSystemTime(new Date(hora));
-    try {
-      repo.obtener.mockResolvedValue(registro);
-      await expect(servicio.obtener(1)).resolves.toMatchObject({ estado });
-    } finally {
-      vi.useRealTimers();
-    }
+    vi.setSystemTime(new Date(hora));
+    repo.obtener.mockResolvedValue(registro);
+    await expect(servicio.obtener(1)).resolves.toMatchObject({ estado });
   });
 });

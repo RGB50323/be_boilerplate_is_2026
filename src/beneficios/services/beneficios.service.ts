@@ -97,6 +97,16 @@ export class BeneficiosService {
   }
 
   async crear(dto: CrearBeneficioDto) {
+    if (dto.vigenteDesde < diaLocal(new Date())) {
+      const mensaje =
+        'La fecha inicial no puede ser anterior al día actual de El Salvador.';
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: [mensaje],
+        errores: { vigenteDesde: mensaje },
+      });
+    }
     const vigenteDesde = limiteVigencia(dto.vigenteDesde);
     const vigenteHasta = limiteVigencia(dto.vigenteHasta, true);
     validarVigencia(vigenteDesde, vigenteHasta);
