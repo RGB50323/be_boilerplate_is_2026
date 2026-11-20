@@ -41,15 +41,16 @@ npm run build
 npx vitest run --config vitest.config.e2e.ts test/reservaciones.e2e-spec.ts test/crear-reservacion.e2e-spec.ts
 ```
 
-La prueba de concurrencia es opt-in y necesita una base **temporal y exclusiva** llamada `h10_test`, con las migraciones aplicadas. Nunca toma `DATABASE_URL` para ejecutar las pruebas. Crea y elimina sus propios registros.
+La prueba de concurrencia necesita una base **temporal y exclusiva** llamada `h10_test`, con las migraciones aplicadas, en el Postgres local; `npm run test:e2e` la prepara sola. Crea y elimina sus propios registros.
 
-```powershell
-# En una terminal dedicada, apuntar ambos comandos a la base temporal.
-$env:DATABASE_URL = 'postgresql://postgres:h10-test@127.0.0.1:55432/h10_test'
-npx prisma migrate deploy
-$env:TEST_DATABASE_URL = $env:DATABASE_URL
-npx vitest run --config vitest.config.e2e.ts test/reservacion-concurrencia.e2e-spec.ts
+```bash
+docker compose up -d postgres
+npm run build
+npm run test:e2e      # todas las e2e, incluida esta
+npm run test:h10       # solo esta
 ```
+
+Corre en el proyecto `h10` de `vitest.config.e2e.ts`, que crea `h10_test` en el servidor de `LOCAL_DATABASE_URL`, le aplica las migraciones y fija `TEST_DATABASE_URL`. Si `TEST_DATABASE_URL` apunta a un servidor que no es local, la prueba falla antes de tocar nada (ver README, "Pruebas contra la base local").
 
 Los tests HTTP usan el guard real con autenticación controlada para aislar H10. Las pruebas de concurrencia y propiedad ejecutan el servicio, repositorio y las restricciones reales de PostgreSQL. No sustituyen una prueba manual de login completo.
 

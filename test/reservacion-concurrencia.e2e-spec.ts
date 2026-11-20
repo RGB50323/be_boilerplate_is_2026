@@ -15,11 +15,12 @@ import { ReservacionRepository } from '../dist/reservaciones/repositories/reserv
 import { JwtAuthGuard } from '../dist/auth/guards/jwt-auth.guard.js';
 import { AuthService } from '../dist/auth/services/auth.service.js';
 import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
+import { urlPruebaTemporal } from '../prisma/destinos-base.js';
 
-// Opt-in: ejecutar solo con una base temporal migrada. Nunca usa DATABASE_URL.
-const url = process.env.TEST_DATABASE_URL;
-const baseTemporal = url && new URL(url).pathname === '/h10_test';
-describe.skipIf(!baseTemporal)('H10 con PostgreSQL real', () => {
+// Corre en su base temporal h10_test: `npm run test:e2e` (proyecto h10 de vitest.config.e2e.ts) la crea, la migra y fija TEST_DATABASE_URL
+// Si TEST_DATABASE_URL apunta a un servidor que no es local, falla antes de tocar nada.
+const url = urlPruebaTemporal('h10', process.env);
+describe.skipIf(!url)('H10 con PostgreSQL real', () => {
   let prisma: PrismaClient;
   let app: INestApplication;
   let sucursalId: number;
@@ -34,8 +35,7 @@ describe.skipIf(!baseTemporal)('H10 con PostgreSQL real', () => {
     correo: 'h10@example.test',
   };
   beforeAll(async () => {
-    if (!url || new URL(url).pathname !== '/h10_test')
-      throw new Error('Usá una base temporal llamada h10_test.');
+    if (!url) throw new Error('Usá una base temporal llamada h10_test.');
     prisma = new PrismaClient({
       adapter: new PrismaPg({ connectionString: url }),
     });

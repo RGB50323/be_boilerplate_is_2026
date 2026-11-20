@@ -35,12 +35,16 @@ Se usa `NotificacionesService` para registrar el aviso interno en la misma trans
 
 `npm run build`, `npm test`, `npm run lint`.
 
-Pruebas de aceptación con PostgreSQL real: crear una base temporal llamada `h11_test`, aplicar las migraciones con `DATABASE_URL` apuntando exclusivamente a esa base, y ejecutar:
+Pruebas de aceptación con PostgreSQL real, en una base temporal local `h11_test`:
 
-```powershell
-$env:TEST_DATABASE_URL = 'postgresql://postgres:CONTRASENA@localhost:55432/h11_test'
-npx vitest run --config vitest.config.e2e.ts test/edicion-reservacion.e2e-spec.ts
+```bash
+docker compose up -d postgres
+npm run build
+npm run test:e2e      # todas las e2e, incluida esta
+npm run test:h11       # solo esta
 ```
+
+Corre en el proyecto `h11` de `vitest.config.e2e.ts`, que crea `h11_test` en el servidor de `LOCAL_DATABASE_URL`, le aplica las migraciones y fija `TEST_DATABASE_URL`. Si `TEST_DATABASE_URL` apunta a un servidor que no es local, la prueba falla antes de tocar nada (ver README, "Pruebas contra la base local").
 
 La suite cubre propiedad/sesión, validaciones, canceladas, alternativas, rollback, avisos y concurrencia tanto sobre una misma reserva como entre dos reservas distintas.
 

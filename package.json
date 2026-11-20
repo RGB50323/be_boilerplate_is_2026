@@ -27,7 +27,11 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
-    "test:h09": "npm run build && vitest run --config vitest.config.e2e.ts test/reservaciones.e2e-spec.ts"
+    "test:h09": "npm run build && vitest run --config vitest.config.e2e.ts test/reservaciones.e2e-spec.ts",
+    "test:h10": "vitest run --config vitest.config.e2e.ts --project h10",
+    "test:h11": "vitest run --config vitest.config.e2e.ts --project h11",
+    "test:h17": "vitest run --config vitest.config.e2e.ts --project h17",
+    "db:verificar": "tsx scripts/verificar-conexion.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

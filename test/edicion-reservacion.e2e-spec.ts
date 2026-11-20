@@ -19,10 +19,12 @@ import { AvisosReservacionService } from '../dist/reservaciones/services/avisos-
 import { JwtAuthGuard } from '../dist/auth/guards/jwt-auth.guard.js';
 import { AuthService } from '../dist/auth/services/auth.service.js';
 import { ApiValidationPipe } from '../dist/common/pipes/api-validation.pipe.js';
+import { urlPruebaTemporal } from '../prisma/destinos-base.js';
 
-const url = process.env.TEST_DATABASE_URL;
-const baseTemporal = url && new URL(url).pathname === '/h11_test';
-describe.skipIf(!baseTemporal)('H11 con PostgreSQL real', () => {
+// Corre en su base temporal h11_test: `npm run test:e2e` (proyecto h11 de vitest.config.e2e.ts) la crea, la migra y fija TEST_DATABASE_URL.
+// Si TEST_DATABASE_URL apunta a un servidor que no es local, falla antes de tocar nada. Sola: npm run test:h11.
+const url = urlPruebaTemporal('h11', process.env);
+describe.skipIf(!url)('H11 con PostgreSQL real', () => {
   let prisma: PrismaClient;
   let app: INestApplication;
   let sucursalId: number;
