@@ -47,6 +47,22 @@ export class UserRepository {
     }
   }
 
+  buscarTitularLealtad(identidad: { correo: string } | { id: string }) {
+    const where =
+      'correo' in identidad
+        ? { email: this.normalizeEmail(identidad.correo) }
+        : { id: identidad.id };
+    return this.prisma.user.findUnique({
+      where,
+      select: {
+        id: true,
+        rol: true,
+        isActive: true,
+        cuentaPuntos: { select: { activa: true } },
+      },
+    });
+  }
+
   findById(id: string): Promise<User | null> {
     return this.prisma.user.findUnique({ where: { id } });
   }

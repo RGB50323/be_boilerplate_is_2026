@@ -1,0 +1,13 @@
+# H18 · Acumulación de puntos
+
+`POST /api/v1/pagos/procesar` acepta `correoLealtad` para pedidos MESA en efectivo o con tarjeta. El backend normaliza el correo. Si se omite, el cobro continúa sin cuenta ni acreditación. Si se envía, debe corresponder a un cliente registrado y activo. Una cuenta de puntos existente también debe estar activa. El backend responde HTTP 400 antes de iniciar el cobro cuando la identidad no cumple esas condiciones.
+
+En LLEVAR se utiliza el cliente autenticado y titular del pedido. Un correo enviado manualmente se rechaza. H18 solo consulta los registros `User`. La cuenta de puntos se reutiliza o se crea al confirmar, con unicidad por `clienteId`. El intento conserva el beneficiario validado al iniciar el cobro y el correo normalizado de MESA. Los reintentos no pueden cambiar esa atribución. La respuesta HTTP conserva su formato y no expone el correo ni la cuenta.
+
+La confirmación, el comprobante H17 y la acreditación se guardan en la misma transacción. H18 consulta la regla vigente de H20. Si aún no hay una regla, el primer pago elegible inicializa una regla persistente de 1 punto por dólar bajo el mismo bloqueo utilizado por H20. Las siguientes confirmaciones reutilizan la regla vigente, y gerencia puede cambiarla desde H20. La regla predeterminada queda visible en H20 tras esa primera confirmación exitosa.
+
+Se multiplica el monto pagado persistido por la tasa mediante aritmética decimal y se redondea hacia abajo. El cambio del efectivo no forma parte del monto. Cada acreditación guarda la regla, la tasa, el valor decimal exacto y los puntos enteros. Los cambios de tasa se aplican a confirmaciones futuras. Una compra que genera cero puntos conserva su acreditación y su ciclo de estados sin cambiar el saldo ni crear un movimiento de saldo.
+
+La ventana de 24 horas se mide en UTC desde `Pago.confirmadoEn`. El proceso programado libera acreditaciones vencidas y actualiza, cuando hay puntos por abonar, el saldo disponible y el movimiento en una transacción. Un reembolso anterior a `liberableEn` cancela la acreditación con cero puntos efectivos y conserva el valor exacto para auditoría. Desde el vencimiento, la acreditación sigue siendo liberable aunque el reembolso ocurra antes de que corra el proceso. H16 admite reembolsos administrativos solo para tarjeta.
+
+La prueba de integración H18 requiere una base local aislada y recién migrada llamada `h18_test`, indicada en `H18_TEST_DATABASE_URL`. El runner utiliza además `LOCAL_DATABASE_URL` para resolver el proyecto E2E. La suite guarda sus escenarios en la base aislada para inspección y requiere una base nueva para volver a ejecutarse.

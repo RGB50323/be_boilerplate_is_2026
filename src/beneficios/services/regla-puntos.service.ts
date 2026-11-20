@@ -12,11 +12,47 @@ const seleccionarRegla = {
 export class ReglaPuntosService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  consultarVigente() {
-    return this.prisma.reglaPuntos.findFirst({
-      where: { activa: true, vigenteDesde: { lte: new Date() } },
+  consultarVigente(tx?: Prisma.TransactionClient, instante?: Date) {
+    return (tx ?? this.prisma).reglaPuntos.findFirst({
+      where: instante
+        ? {
+            vigenteDesde: { lte: instante },
+            OR: [{ activa: true }, { deshabilitadaEn: { gt: instante } }],
+          }
+        : { activa: true, vigenteDesde: { lte: new Date() } },
+      orderBy: [{ vigenteDesde: 'desc' }, { id: 'desc' }],
       select: seleccionarRegla,
     });
+  }
+
+  async prepararConfirmacion(tx: Prisma.TransactionClient) {
+    const existeActiva = await tx.reglaPuntos.findFirst({
+      where: { activa: true },
+      select: { id: true },
+    });
+    // El bloqueo compartido coordina la lectura con H20. Si falta la regla,
+    // el mismo bloqueo exclusivo de H20 serializa su primera creación.
+    if (existeActiva) {
+      await tx.$executeRaw`LOCK TABLE regla_puntos IN SHARE MODE`;
+      return this.ahora(tx);
+    }
+
+    await tx.$executeRaw`LOCK TABLE regla_puntos IN SHARE ROW EXCLUSIVE MODE`;
+    const ahora = await this.ahora(tx);
+    const vigente = await this.consultarVigente(tx, ahora);
+    if (!vigente) {
+      await tx.reglaPuntos.create({
+        data: { puntosPorDolar: 1, vigenteDesde: ahora, creadaEn: ahora },
+      });
+    }
+    return ahora;
+  }
+
+  private async ahora(tx: Prisma.TransactionClient) {
+    const [fila] = await tx.$queryRaw<{ ahora: Date }[]>`
+      SELECT clock_timestamp() AT TIME ZONE 'UTC' AS ahora
+    `;
+    return fila.ahora;
   }
 
   confirmar(puntosPorDolar: number, usuarioId: string) {
@@ -30,9 +66,7 @@ export class ReglaPuntosService {
         });
         if (anterior?.puntosPorDolar === puntosPorDolar) return anterior;
 
-        const [{ ahora }] = await tx.$queryRaw<{ ahora: Date }[]>`
-          SELECT clock_timestamp() AS ahora
-        `;
+        const ahora = await this.ahora(tx);
         if (anterior) {
           await tx.reglaPuntos.update({
             where: { id: anterior.id },

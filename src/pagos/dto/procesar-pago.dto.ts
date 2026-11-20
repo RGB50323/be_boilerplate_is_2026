@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer';
+import { IsNormalizedEmail } from '@Common/decorators';
 import {
   IsArray,
   ArrayMinSize,
@@ -52,6 +53,10 @@ export class TicketPagoDto {
 }
 
 export class ProcesarPagoDto {
+  @ValidateIf((_, valor: unknown) => valor !== undefined)
+  @IsNormalizedEmail()
+  correoLealtad?: string;
+
   @ValidateIf((_, valor: unknown) => valor !== undefined)
   @IsIn(['EFECTIVO', 'TARJETA'])
   metodo?: 'EFECTIVO' | 'TARJETA';

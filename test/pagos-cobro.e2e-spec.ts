@@ -27,6 +27,8 @@ import { PedidosLlevarRepository } from '../src/pedidos/repositories/pedidos-lle
 import { PedidosLlevarService } from '../src/pedidos/services/pedidos-llevar.service.js';
 import { PedidosService } from '../src/pedidos/services/pedidos.service.js';
 
+import { crearAcreditacionesPruebas } from './crear-acreditaciones-pruebas.js';
+
 // Usar solo una base de pruebas aislada con migraciones aplicadas.
 const databaseUrl = process.env.PAGOS_TEST_DATABASE_URL;
 
@@ -59,7 +61,7 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
       new PedidosLlevarRepository(db),
       {} as PedidosService,
     );
-    repositorio = new PagoRepository(db, comprobantes);
+    repositorio = new PagoRepository(db, comprobantes, crearAcreditacionesPruebas(db));
     pagos = new PagosService(
       repositorio,
       new PasarelaSimuladaService(),
@@ -92,6 +94,7 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
     try {
       if (sucursalId) {
         await prisma.$transaction([
+          prisma.acreditacionPuntos.deleteMany({ where: { pago: { pedido: { sucursalId } } } }),
           prisma.comprobante.deleteMany({ where: { pedido: { sucursalId } } }),
           prisma.pago.deleteMany({ where: { pedido: { sucursalId } } }),
           prisma.pedido.deleteMany({ where: { sucursalId } }),
@@ -99,7 +102,10 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
           prisma.sucursal.delete({ where: { id: sucursalId } }),
         ]);
       }
-      if (clienteId) await prisma.user.delete({ where: { id: clienteId } });
+      if (clienteId) {
+        await prisma.cuentaPuntos.deleteMany({ where: { clienteId } });
+        await prisma.user.delete({ where: { id: clienteId } });
+      }
       if (platilloId)
         await prisma.platillo.delete({ where: { id: platilloId } });
       if (categoriaId)
@@ -384,7 +390,7 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
         data: { creadoEn: new Date(persistido.creadoEn.getTime() - 11000) },
       });
       const reiniciado = new PagosService(
-        new PagoRepository(prisma as PrismaService, comprobantes),
+        new PagoRepository(prisma as PrismaService, comprobantes, crearAcreditacionesPruebas(prisma as PrismaService)),
         new PasarelaSimuladaService(),
         llevar,
       );

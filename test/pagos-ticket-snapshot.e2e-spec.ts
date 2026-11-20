@@ -1,4 +1,4 @@
-﻿import { randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { ConflictException } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Test } from '@nestjs/testing';
@@ -23,6 +23,8 @@ import {
   EstadoTransaccionSimulada,
   PasarelaSimuladaService,
 } from '../src/pagos/services/pasarela-simulada.service.js';
+
+import { crearAcreditacionesPruebas } from './crear-acreditaciones-pruebas.js';
 
 // Base aislada con las migraciones aplicadas. Las pruebas necesitan commits reales.
 const databaseUrl = urlPruebaTemporal('h17', process.env);
@@ -77,6 +79,7 @@ describe.skipIf(!databaseUrl)('H17 - emisión automática en PostgreSQL', () => 
       new PagoRepository(
         prisma as PrismaService,
         new ComprobantesService(new ComprobantesRepository()),
+        crearAcreditacionesPruebas(prisma as PrismaService),
       ),
       new PasarelaSimuladaService(),
       {} as PedidosLlevarService,

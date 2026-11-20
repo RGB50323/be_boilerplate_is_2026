@@ -43,6 +43,7 @@ export class PagosService {
 
   async procesarPago(datos: ProcesarPagoDto, usuario: User) {
     const { solicitudId, ticket } = datos;
+    const correoLealtad = datos.correoLealtad?.trim().toLowerCase() ?? null;
 
     // 1. Verificar que el pedido exista
     const pedido = await this.pagoRepository.buscarPedido(ticket.id);
@@ -53,6 +54,9 @@ export class PagosService {
 
     // 2. Verificar autorización antes de devolver cualquier pago
     this.validarAutorizacion(pedido, usuario);
+    if (pedido.tipo === TipoPedido.LLEVAR && correoLealtad !== null) {
+      throw new BadRequestException('El titular de lealtad de un pedido para llevar se obtiene del pedido.');
+    }
 
     const metodo = datos.metodo ?? 'TARJETA';
     const detallePago = this.prepararDetallePago(
@@ -66,7 +70,7 @@ export class PagosService {
       await this.pagoRepository.buscarPorSolicitud(solicitudId);
 
     if (pagoExistente) {
-      this.verificarReintento(pagoExistente, ticket, metodo, detallePago);
+      this.verificarReintento(pagoExistente, ticket, metodo, detallePago, correoLealtad);
       await this.recuperarPedidoLlevar(pedido, pagoExistente.estado);
       return this.respuestaPago(pagoExistente);
     }
@@ -83,7 +87,7 @@ export class PagosService {
       const existente =
         await this.pagoRepository.buscarPorSolicitud(solicitudId);
       if (existente) {
-        this.verificarReintento(existente, ticket, metodo, detallePago);
+        this.verificarReintento(existente, ticket, metodo, detallePago, correoLealtad);
         await this.recuperarPedidoLlevar(pedido, existente.estado);
         return this.respuestaPago(existente);
       }
@@ -91,6 +95,14 @@ export class PagosService {
         `El pedido ${ticket.id} ya tiene un pago en estado ${pagoBloqueante.estado}`,
       );
     }
+
+    // Validar antes de solicitar un cobro. Los reintentos anteriores conservan
+    // la decisión tomada al aceptar el intento.
+    const clienteLealtadId = correoLealtad !== null
+      ? await this.pagoRepository.validarBeneficiario({ correo: correoLealtad })
+      : pedido.tipo === TipoPedido.LLEVAR
+        ? await this.pagoRepository.validarBeneficiario({ id: usuario.id })
+        : undefined;
 
     // 6. Ejecutar la pasarela simulada
     const resultado =
@@ -124,6 +136,8 @@ export class PagosService {
         metodo,
         detallePago,
         ticketSnapshot,
+        ...(correoLealtad !== null ? { correoLealtad } : {}),
+        ...(clienteLealtadId !== undefined ? { clienteLealtadId } : {}),
       });
 
       return this.respuestaPago(pago);
@@ -134,7 +148,7 @@ export class PagosService {
 
         // Recuperar operación anterior con la misma clave
         if (existente) {
-          this.verificarReintento(existente, ticket, metodo, detallePago);
+          this.verificarReintento(existente, ticket, metodo, detallePago, correoLealtad);
           await this.recuperarPedidoLlevar(pedido, existente.estado);
           return this.respuestaPago(existente);
         }
@@ -363,6 +377,7 @@ export class PagosService {
         ? await this.pagoRepository.confirmarYEmitirComprobante(
             transaccionId,
             pago.estado,
+            pago.clienteLealtadId != null || pago.pedido.tipo === TipoPedido.LLEVAR,
           )
         : await this.pagoRepository.actualizarEstado(
             transaccionId,
@@ -458,14 +473,17 @@ export class PagosService {
       metodo?: string | null;
       detallePago?: Prisma.JsonValue;
       ticketSnapshot?: Prisma.JsonValue;
+      correoLealtad?: string | null;
     },
     ticket: ProcesarPagoDto['ticket'],
     metodo: string,
-    detallePago?: Prisma.InputJsonObject,
+    detallePago: Prisma.InputJsonObject | undefined,
+    correoLealtad: string | null,
   ): void {
     const snapshot = pago.ticketSnapshot ?? null;
     if (
       pago.pedidoId !== ticket.id ||
+      (pago.correoLealtad ?? null) !== correoLealtad ||
       !new Prisma.Decimal(ticket.total).eq(pago.monto) ||
       (pago.metodo ?? 'TARJETA') !== metodo ||
       !isDeepStrictEqual(pago.detallePago ?? null, detallePago ?? null) ||
