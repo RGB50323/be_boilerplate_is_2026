@@ -1,4 +1,4 @@
-﻿# H18–H20 · Puntos, cupones y beneficios
+# H18–H20 · Puntos, cupones y beneficios
 
 Todas las rutas usan el prefijo `/api/v1` y requieren `Authorization: Bearer <token>`. Los ejemplos usan fechas ISO 8601 con zona horaria. Las respuestas devuelven fechas en UTC.
 
@@ -11,7 +11,7 @@ Todas las rutas usan el prefijo `/api/v1` y requieren `Authorization: Bearer <to
 
 Cada movimiento incluye `id`, `cuentaPuntosId`, `tipo`, `puntos`, `saldoAnterior`, `saldoResultante`, `pedidoId`, `canjeId`, `reglaId`, `puntosPorDolar`, `motivo` y `fecha`. Los saldos de los movimientos reflejan el saldo contable, que incluye los puntos pendientes hasta que se liberen o se reviertan. El saldo disponible excluye esos puntos durante las primeras 24 horas.
 
-Al confirmarse un pago, el backend multiplica el monto por la tasa vigente y redondea hacia abajo. Una cuenta de cliente inactiva, una regla ausente o un resultado de cero puntos dejan el pago sin acumulación. Los reembolsos dentro del bloqueo registran un ajuste por los puntos pendientes. Los reembolsos posteriores conservan los puntos liberados.
+Al confirmarse un pago, el backend multiplica el monto por la tasa vigente y redondea hacia abajo. Una cuenta de cliente inactiva, una regla ausente o un resultado de cero puntos dejan el pago sin acumulación. Un reembolso registra un ajuste que descuenta los puntos que generó esa compra, estén pendientes o ya liberados. Si el cliente ya canjeó esos puntos, el saldo queda en cero.
 
 En LLEVAR se usa al propietario autenticado del pedido. En MESA, si se envía `correoLealtad`, debe corresponder a un único usuario activo con rol CLIENTE. El correo se conserva en el pago para resolverlo cuando se confirme la tarjeta y se excluye del comprobante. Un reintento de pago debe conservar el mismo correo, comparado sin distinguir mayúsculas.
 
@@ -20,6 +20,7 @@ En LLEVAR se usa al propietario autenticado del pedido. En MESA, si se envía `c
 | Método y ruta | Rol | Entrada | Respuesta exitosa |
 | --- | --- | --- | --- |
 | `GET /lealtad/beneficios` | CLIENTE | Sin cuerpo | Lista de beneficios adquiribles |
+| `GET /lealtad/mis-cupones` | CLIENTE | Sin cuerpo | Mis beneficios: cupones del cliente, los más recientes primero, con su estado |
 | `POST /lealtad/canjes` | CLIENTE | `{ "beneficioId": 12, "claveIdempotencia": "uuid-de-la-solicitud" }` | 201 con el cupón |
 | `GET /lealtad/cupones/:codigo` | MESERO, GERENTE, GERENTE_GENERAL | Código | 200 con el cupón válido |
 | `PATCH /lealtad/cupones/:codigo/utilizar` | MESERO, GERENTE, GERENTE_GENERAL | Código y cuerpo vacío | 200 con el cupón y `utilizadoEn` |
@@ -31,18 +32,21 @@ El cupón tiene esta estructura.
   "id": 44,
   "codigo": "9b38c378f88b7a289fbb",
   "beneficio": { "id": 12, "nombre": "Limonada" },
-  "expiraEn": "2026-11-20T21:05:00.000Z",
-  "utilizadoEn": null
+  "puntosUsados": 30,
+  "creadoEn": "2026-11-20T21:00:00.000Z",
+  "expiraEn": "2026-12-01T05:59:59.999Z",
+  "utilizadoEn": null,
+  "estado": "PENDIENTE"
 }
 ```
 
 La clave de idempotencia admite hasta 64 caracteres y es única en todo el sistema. Reenviar la misma clave con el mismo cliente y beneficio recupera el registro original incluso si el cupón venció o fue utilizado. Otro uso de la misma clave devuelve 409. El saldo insuficiente devuelve 409 y un beneficio indisponible devuelve 404. La verificación o confirmación devuelve 404 para un código inexistente, 409 para uno utilizado y 410 para uno expirado.
 
-Los cinco minutos se cuentan desde la creación del canje. La caducidad posterior del beneficio permite usar el cupón hasta su propio vencimiento. Un cupón expirado conserva su registro y el descuento de puntos.
+El cupón vale hasta que se utiliza o hasta que termina la vigencia del beneficio (`expiraEn` es el `vigenteHasta` del beneficio). `estado` es `PENDIENTE`, `UTILIZADO` o `EXPIRADO`. Un cupón expirado conserva su registro y el descuento de puntos. El cliente puede volver a ver sus códigos en `GET /lealtad/mis-cupones`.
 
 ## Administración
 
-GERENTE y GERENTE_GENERAL operan sobre el mismo catálogo global.
+Solo GERENTE administra beneficios y reglas, sobre un catálogo global.
 
 | Método y ruta | Entrada | Respuesta exitosa |
 | --- | --- | --- |
@@ -52,6 +56,7 @@ GERENTE y GERENTE_GENERAL operan sobre el mismo catálogo global.
 | `DELETE /lealtad/admin/beneficios/:id` | Sin cuerpo | 200 con el beneficio deshabilitado |
 | `GET /lealtad/admin/regla` | Sin cuerpo | Regla vigente o `null` |
 | `PUT /lealtad/admin/regla` | `{ "puntosPorDolar": 2 }` | 200 con la regla vigente |
+| `DELETE /lealtad/admin/regla` | Sin cuerpo | 200 con la regla deshabilitada; 404 si no hay regla vigente. Sin regla, las compras no acumulan puntos |
 
 La respuesta de beneficio incluye `id`, `nombre`, `descripcion`, `costoPuntos`, `activo`, `vigenteDesde`, `vigenteHasta`, `creadoEn`, `modificadoEn` y `deshabilitadoEn`. `activo` toma el valor `true` al crear si se omite. Ambas fechas son obligatorias y el fin debe ser posterior al inicio. Los beneficios deshabilitados devuelven 409 al intentar editarlos o deshabilitarlos otra vez.
 
@@ -79,11 +84,11 @@ npm.cmd start
 
 Para probar manualmente, inicia sesión como gerente, configura una regla y crea un beneficio con vigencia actual. Confirma un pago de un cliente y consulta sus puntos pendientes. Con un cliente que tenga puntos ya liberados, adquiere el beneficio, verifica el código como mesero y confirma la entrega.
 
-Para las pruebas automatizadas, establece `LOCAL_DATABASE_URL` a un PostgreSQL local con permiso para crear bases de pruebas. Vitest prepara `h18_h20_test` y `h17_test` allí.
+Para las pruebas automatizadas, establece `LOCAL_DATABASE_URL` a un PostgreSQL local con permiso para crear bases de pruebas. Vitest prepara `h16_test` (cobro de H16 con la acumulación de puntos) y `h17_test` allí.
 
 ```powershell
 npm.cmd test
-npm.cmd run test:e2e -- --project h18_h20 --project h17
+npm.cmd run test:e2e -- --project h16 --project h17
 ```
 
 ## Reconstrucción local con migraciones canónicas

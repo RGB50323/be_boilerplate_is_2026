@@ -9,8 +9,8 @@ import {
 } from '../types/ticket-snapshot.js';
 import {
   acumularPorPago,
-  cancelarPuntosPendientes,
-} from '../../lealtad/puntos.js';
+  revertirPuntosPorReembolso,
+} from '../../lealtad/utils/puntos.js';
 import { cerrarPedidoLlevarListo } from '../../pedidos/utils/cerrar-pedido-llevar.js';
 
 //----------------------------------------------------------------------------
@@ -286,7 +286,7 @@ export class PagoRepository {
           where: { transaccionId },
           select: { pedidoId: true },
         });
-        await cancelarPuntosPendientes(tx, pago.pedidoId);
+        await revertirPuntosPorReembolso(tx, pago.pedidoId);
       }
       return resultado;
     });

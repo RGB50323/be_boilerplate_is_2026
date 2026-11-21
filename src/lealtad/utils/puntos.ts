@@ -119,7 +119,8 @@ export async function acumularPorPago(
   }
 }
 
-export async function cancelarPuntosPendientes(
+// H18: un reembolso descuenta los puntos que generó esa compra, estén o no liberados
+export async function revertirPuntosPorReembolso(
   tx: Prisma.TransactionClient,
   pedidoId: number,
 ) {
@@ -131,9 +132,8 @@ export async function cancelarPuntosPendientes(
   });
   if (!acumulacion) return;
   const cuenta = await bloquearCuenta(tx, acumulacion.cuenta.clienteId);
-  const ahora = new Date();
-  if (!cuenta || ahora.getTime() >= acumulacion.fecha.getTime() + BLOQUEO_MS)
-    return;
+  if (!cuenta) return;
+  // El saldo no baja de cero si el cliente ya canjeó esos puntos
   const puntos = Math.min(cuenta.saldo, acumulacion.puntos);
   const saldoResultante = cuenta.saldo - puntos;
   await tx.movimientoPuntos.create({
@@ -144,8 +144,8 @@ export async function cancelarPuntosPendientes(
       saldoAnterior: cuenta.saldo,
       saldoResultante,
       pedidoId,
-      motivo: 'Reembolso durante el bloqueo de puntos',
-      fecha: ahora,
+      motivo: 'Reembolso de la compra',
+      fecha: new Date(),
     },
   });
   await tx.cuentaPuntos.update({

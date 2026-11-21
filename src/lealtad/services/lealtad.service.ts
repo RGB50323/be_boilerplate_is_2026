@@ -8,17 +8,27 @@ import {
 import { Prisma, TipoMovimientoPuntos } from '@PrismaClient';
 import { PrismaService } from '@Prisma/services';
 import { randomBytes } from 'node:crypto';
-import {
+import type {
   AdquirirCuponDto,
   CrearBeneficioDto,
   EditarBeneficioDto,
-} from './lealtad.dto.js';
-import { bloquearCuenta, puntosPendientes, reglaVigente } from './puntos.js';
+} from '../dto/index.js';
+import {
+  bloquearCuenta,
+  puntosPendientes,
+  reglaVigente,
+} from '../utils/puntos.js';
 
-const VIGENCIA_CUPON_MS = 5 * 60 * 1000;
+const ID_MAXIMO = 2_147_483_647;
 const incluirBeneficio = {
-  beneficio: { select: { id: true, nombre: true } },
+  beneficio: { select: { id: true, nombre: true, vigenteHasta: true } },
 } as const;
+
+type CanjeConBeneficio = Prisma.CanjeGetPayload<{
+  include: typeof incluirBeneficio;
+}>;
+
+export type EstadoCupon = 'PENDIENTE' | 'UTILIZADO' | 'EXPIRADO';
 
 function vigencia(ahora: Date): Prisma.BeneficioWhereInput {
   return {
@@ -29,27 +39,34 @@ function vigencia(ahora: Date): Prisma.BeneficioWhereInput {
   };
 }
 
-function datosCupon(
-  canje: Prisma.CanjeGetPayload<{ include: typeof incluirBeneficio }>,
-) {
+// El cupón vale hasta que se usa o hasta que termina la vigencia del beneficio
+function datosCupon(canje: CanjeConBeneficio, ahora = new Date()) {
+  const expiraEn = canje.beneficio.vigenteHasta;
+  const estado: EstadoCupon = canje.utilizadoEn
+    ? 'UTILIZADO'
+    : expiraEn <= ahora
+      ? 'EXPIRADO'
+      : 'PENDIENTE';
   return {
     id: canje.id,
     codigo: canje.codigo,
-    beneficio: canje.beneficio,
-    expiraEn: new Date(canje.creadoEn.getTime() + VIGENCIA_CUPON_MS),
+    beneficio: { id: canje.beneficio.id, nombre: canje.beneficio.nombre },
+    puntosUsados: canje.puntosUsados,
+    creadoEn: canje.creadoEn,
+    expiraEn,
     utilizadoEn: canje.utilizadoEn,
+    estado,
   };
 }
 
-function validarCupon(
-  canje: ReturnType<typeof datosCupon> | null,
-  ahora: Date,
-) {
-  if (!canje) throw new NotFoundException('El cupon no existe');
-  if (canje.utilizadoEn)
-    throw new ConflictException('El cupon ya fue utilizado');
-  if (canje.expiraEn <= ahora) throw new GoneException('El cupon ha expirado');
-  return canje;
+function validarCupon(canje: CanjeConBeneficio | null, ahora: Date) {
+  if (!canje) throw new NotFoundException('El cupón no existe.');
+  const cupon = datosCupon(canje, ahora);
+  if (cupon.estado === 'UTILIZADO')
+    throw new ConflictException('El cupón ya fue utilizado.');
+  if (cupon.estado === 'EXPIRADO')
+    throw new GoneException('El cupón ha expirado.');
+  return cupon;
 }
 
 const diaEnElSalvador = new Intl.DateTimeFormat('sv-SE', {
@@ -59,7 +76,10 @@ const diaEnElSalvador = new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'America/El_Salvador',
 });
 
-function errorVigencia(campo: 'vigenteDesde' | 'vigenteHasta', mensaje: string) {
+function errorVigencia(
+  campo: 'vigenteDesde' | 'vigenteHasta',
+  mensaje: string,
+) {
   return new BadRequestException({
     statusCode: 400,
     error: 'Bad Request',
@@ -130,6 +150,17 @@ export class LealtadService {
     });
   }
 
+  // Mis beneficios: cupones del cliente, los más recientes primero
+  async misCupones(clienteId: string) {
+    const canjes = await this.prisma.canje.findMany({
+      where: { clienteId },
+      include: incluirBeneficio,
+      orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }],
+    });
+    const ahora = new Date();
+    return canjes.map((canje) => datosCupon(canje, ahora));
+  }
+
   async adquirir(
     clienteId: string,
     { beneficioId, claveIdempotencia }: AdquirirCuponDto,
@@ -143,13 +174,14 @@ export class LealtadService {
             where,
             include: incluirBeneficio,
           });
+          // Doble Confirmar: la misma clave devuelve el canje original
           if (previo) {
             if (
               previo.clienteId !== clienteId ||
               previo.beneficioId !== beneficioId
             ) {
               throw new ConflictException(
-                'La clave ya corresponde a otro canje',
+                'La clave ya corresponde a otro canje.',
               );
             }
             return datosCupon(previo);
@@ -161,14 +193,16 @@ export class LealtadService {
             where: { id: beneficioId, ...vigencia(ahora) },
           });
           if (!beneficio)
-            throw new NotFoundException('El beneficio no esta disponible');
+            throw new NotFoundException(
+              'El beneficio no está disponible: está inactivo o vencido.',
+            );
           if (
             !cuenta?.activa ||
             cuenta.saldo - (await puntosPendientes(tx, cuenta.id, ahora)) <
               beneficio.costoPuntos
           ) {
             throw new ConflictException(
-              'Saldo de puntos disponible insuficiente',
+              'No tienes puntos disponibles suficientes para este beneficio.',
             );
           }
 
@@ -199,7 +233,7 @@ export class LealtadService {
               fecha: canje.creadoEn,
             },
           });
-          return datosCupon(canje);
+          return datosCupon(canje, ahora);
         });
       } catch (error) {
         if (
@@ -210,7 +244,7 @@ export class LealtadService {
       }
     }
     throw new ConflictException(
-      'No se pudo asignar un codigo unico. Reintente con la misma clave',
+      'No se pudo asignar un código único. Reintenta con la misma clave.',
     );
   }
 
@@ -219,7 +253,7 @@ export class LealtadService {
       where: { codigo },
       include: incluirBeneficio,
     });
-    return validarCupon(canje && datosCupon(canje), new Date());
+    return validarCupon(canje, new Date());
   }
 
   utilizar(codigo: string) {
@@ -230,9 +264,9 @@ export class LealtadService {
         include: incluirBeneficio,
       });
       const utilizadoEn = new Date();
-      const datos = validarCupon(canje && datosCupon(canje), utilizadoEn);
-      await tx.canje.update({ where: { id: datos.id }, data: { utilizadoEn } });
-      return { ...datos, utilizadoEn };
+      const cupon = validarCupon(canje, utilizadoEn);
+      await tx.canje.update({ where: { id: cupon.id }, data: { utilizadoEn } });
+      return { ...cupon, utilizadoEn, estado: 'UTILIZADO' as EstadoCupon };
     });
   }
 
@@ -281,13 +315,16 @@ export class LealtadService {
     id: number,
     dto: EditarBeneficioDto | null,
   ) {
+    // Un id fuera de INTEGER no existe: 404 en vez de error de base
+    if (id > ID_MAXIMO)
+      return Promise.reject(new NotFoundException('El beneficio no existe.'));
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM beneficio WHERE id = ${id} FOR NO KEY UPDATE`;
       const anterior = await tx.beneficio.findUnique({ where: { id } });
-      if (!anterior) throw new NotFoundException('El beneficio no existe');
+      if (!anterior) throw new NotFoundException('El beneficio no existe.');
       if (anterior.deshabilitadoEn)
         throw new ConflictException(
-          'El beneficio fue deshabilitado definitivamente',
+          'El beneficio fue deshabilitado definitivamente.',
         );
       const ahora = new Date();
       const datos = dto
@@ -343,6 +380,32 @@ export class LealtadService {
           entidadId: regla.id,
           accion: anterior ? 'MODIFICACION' : 'CREACION',
           valorAnterior: anterior ?? Prisma.DbNull,
+          valorNuevo: regla,
+        },
+      });
+      return regla;
+    });
+  }
+
+  // H20: sin regla vigente las compras no acumulan puntos
+  deshabilitarRegla(usuarioId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`LOCK TABLE regla_puntos IN SHARE ROW EXCLUSIVE MODE`;
+      const ahora = new Date();
+      const anterior = await reglaVigente(tx, ahora);
+      if (!anterior)
+        throw new NotFoundException('No hay una regla de puntos vigente.');
+      const regla = await tx.reglaPuntos.update({
+        where: { id: anterior.id },
+        data: { activa: false, modificadaEn: ahora, deshabilitadaEn: ahora },
+      });
+      await tx.historialLealtad.create({
+        data: {
+          usuarioId,
+          entidad: 'REGLA',
+          entidadId: regla.id,
+          accion: 'DESHABILITACION',
+          valorAnterior: anterior,
           valorNuevo: regla,
         },
       });
