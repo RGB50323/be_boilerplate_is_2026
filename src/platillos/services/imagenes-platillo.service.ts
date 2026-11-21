@@ -1,15 +1,18 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
+  Logger,
   PayloadTooLargeException,
+  ServiceUnavailableException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { ALMACEN_IMAGENES, type AlmacenImagenes } from './almacen-imagenes.js';
 
 export const TAMANO_MAXIMO_IMAGEN = 2 * 1024 * 1024;
-export const CARPETA_IMAGENES = join(process.cwd(), 'uploads', 'platillos');
+
+const TIPO_CONTENIDO = { png: 'image/png', jpg: 'image/jpeg' } as const;
 
 const FIRMA_PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -33,6 +36,12 @@ function detectarFormato(contenido: Buffer): 'png' | 'jpg' | null {
 
 @Injectable()
 export class ImagenesPlatilloService {
+  private readonly logger = new Logger(ImagenesPlatilloService.name);
+
+  constructor(
+    @Inject(ALMACEN_IMAGENES) private readonly almacen: AlmacenImagenes,
+  ) {}
+
   async guardar(
     archivo: ArchivoSubido | undefined,
   ): Promise<{ imagenUrl: string }> {
@@ -53,11 +62,23 @@ export class ImagenesPlatilloService {
       );
     }
 
-    await mkdir(CARPETA_IMAGENES, { recursive: true });
     const nombre = `${randomUUID()}.${formato}`;
-    await writeFile(join(CARPETA_IMAGENES, nombre), archivo.buffer);
-
-    return { imagenUrl: `/uploads/platillos/${nombre}` };
+    try {
+      const imagenUrl = await this.almacen.guardar(
+        nombre,
+        archivo.buffer,
+        TIPO_CONTENIDO[formato],
+      );
+      return { imagenUrl };
+    } catch (error) {
+      this.logger.error(
+        `No se pudo guardar la imagen ${nombre}.`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      throw new ServiceUnavailableException(
+        'No se pudo guardar la imagen. Intenta de nuevo.',
+      );
+    }
   }
 }
 
