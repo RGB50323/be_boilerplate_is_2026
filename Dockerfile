@@ -57,6 +57,11 @@ COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 # El seed (`prisma db seed`) corre con tsx sobre prisma/seed.ts, que importa el
 # cliente generado desde src/, no desde dist/.
 COPY --from=builder /app/src/generated ./src/generated
+# Certificado CA de Supabase para validar la conexión (sslmode=verify-full).
+COPY --from=builder /app/certs ./certs
+
+RUN mkdir -p /app/uploads/platillos \
+    && chown -R node:node /app/uploads
 
 # La imagen de Node ya trae el usuario `node` sin privilegios.
 USER node

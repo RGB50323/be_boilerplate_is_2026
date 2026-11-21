@@ -42,6 +42,8 @@ export class TokenService {
     const payload: AccessTokenPayload = {
       sub: user.id,
       email: user.email,
+      rol: user.rol,
+      sucursalId: user.sucursalId,
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
@@ -66,7 +68,9 @@ export class TokenService {
    * Incluye detección de reúso: si llega un token que ya fue canjeado, se
    * asume que fue robado y se revoca la sesión completa del usuario.
    */
-  async rotate(refreshToken: string): Promise<{ user: User; tokens: TokenPair }> {
+  async rotate(
+    refreshToken: string,
+  ): Promise<{ user: User; tokens: TokenPair }> {
     const stored = await this.refreshTokenRepository.findByTokenHashWithUser(
       this.hashToken(refreshToken),
     );
@@ -90,7 +94,9 @@ export class TokenService {
       throw new UnauthorizedException('La cuenta está inactiva.');
     }
 
-    await this.refreshTokenRepository.revokeById(stored.id);
+    if (!(await this.refreshTokenRepository.consume(stored.id))) {
+      throw new UnauthorizedException('Refresh token ya utilizado.');
+    }
 
     return {
       user: stored.user,
@@ -109,6 +115,16 @@ export class TokenService {
     await this.refreshTokenRepository.revokeByTokenHash(
       this.hashToken(refreshToken),
     );
+  }
+
+  async verifyAccessToken(accessToken: string): Promise<AccessTokenPayload> {
+    try {
+      return await this.jwtService.verifyAsync<AccessTokenPayload>(accessToken);
+    } catch {
+      // Cubre firma inválida, token expirado y token malformado por igual:
+      // no conviene decirle al cliente cuál de los tres fue.
+      throw new UnauthorizedException('Token de acceso inválido o expirado.');
+    }
   }
 
   /** Revoca todas las sesiones activas de un usuario. */

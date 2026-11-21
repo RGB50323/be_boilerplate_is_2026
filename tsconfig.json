@@ -18,7 +18,7 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false,
-    "types": ["vitest/globals", "node"],
+    "types": ["vitest/globals", "node", "multer"],
     // Alias por módulo. Cada entrada apunta al barrel (index.ts) de la carpeta,
     // de modo que `@Auth/services` resuelve a `src/auth/services/index.ts`.
     //
@@ -41,13 +41,37 @@
       "@Auth/*": ["./src/auth/*/index.ts"],
       "@Users": ["./src/users/index.ts"],
       "@Users/*": ["./src/users/*/index.ts"],
+      "@Notificaciones": ["./src/notificaciones/index.ts"],
+      "@Notificaciones/*": ["./src/notificaciones/*/index.ts"],
       "@Health": ["./src/health/index.ts"],
       "@Health/*": ["./src/health/*/index.ts"],
+      "@Reservaciones": ["./src/reservaciones/index.ts"],
+      "@Reservaciones/*": ["./src/reservaciones/*/index.ts"],
+      "@Dashboard": ["./src/dashboard/index.ts"],
+      "@Dashboard/*": ["./src/dashboard/*/index.ts"],
       "@Prisma": ["./src/prisma/index.ts"],
       "@Prisma/*": ["./src/prisma/*/index.ts"],
+      "@Cocina": ["./src/cocina/index.ts"],
+      "@Cocina/*": ["./src/cocina/*/index.ts"],
+      "@Mesero": ["./src/mesero/index.ts"],
+      "@Mesero/*": ["./src/mesero/*/index.ts"],
+      "@Inventario": ["./src/inventario/index.ts"],
+      "@Inventario/*": ["./src/inventario/*/index.ts"],
       "@Common/*": ["./src/common/*/index.ts"],
       "@Config": ["./src/config/index.ts"],
-      "@PrismaClient": ["./src/generated/prisma/client.ts"]
+      "@PrismaClient": ["./src/generated/prisma/client.ts"],
+      "@Pagos": ["./src/pagos/index.ts"],
+      "@Pagos/*": ["./src/pagos/*/index.ts"],
+      "@Categorias": ["./src/categorias/index.ts"],
+      "@Categorias/*": ["./src/categorias/*/index.ts"],
+      "@Platillos": ["./src/platillos/index.ts"],
+      "@Platillos/*": ["./src/platillos/*/index.ts"],
+      "@Pedidos": ["./src/pedidos/index.ts"],
+      "@Pedidos/*": ["./src/pedidos/*/index.ts"],
+      "@Resenas": ["./src/resenas/index.ts"],
+      "@Resenas/*": ["./src/resenas/*/index.ts"],
+      "@Ocupacion": ["./src/ocupacion/index.ts"],
+      "@Ocupacion/*": ["./src/ocupacion/*/index.ts"]
     }
   }
 }

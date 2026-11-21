@@ -1,0 +1,115 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '@Prisma/services';
+
+const CATEGORIA_PUBLICA = { id: true, nombre: true, activa: true } as const;
+
+@Injectable()
+export class CategoriasRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  crear(nombre: string) {
+    return this.prisma.categoria.create({
+      data: { nombre },
+      select: CATEGORIA_PUBLICA,
+    });
+  }
+
+  renombrar(id: number, nombre: string) {
+    return this.prisma.categoria.update({
+      where: { id },
+      data: { nombre },
+      select: CATEGORIA_PUBLICA,
+    });
+  }
+
+  buscarPorId(id: number) {
+    return this.prisma.categoria.findUnique({
+      where: { id },
+      select: { id: true, activa: true },
+    });
+  }
+
+  contarPlatillosActivos(categoriaId: number) {
+    return this.prisma.platillo.count({
+      where: {
+        categoriaId,
+        sucursales: { some: { activo: true } },
+      },
+    });
+  }
+
+  deshabilitar(id: number) {
+    return this.prisma.categoria.update({
+      where: { id },
+      data: { activa: false, deshabilitadaEn: new Date() },
+      select: { id: true, activa: true, deshabilitadaEn: true },
+    });
+  }
+
+  buscarPlatillo(id: number, sucursalId: number) {
+    return this.prisma.platillo.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        sucursales: {
+          where: { sucursalId },
+          select: { id: true },
+        },
+      },
+    });
+  }
+
+  asignarCategoria(platilloId: number, categoriaId: number) {
+    return this.prisma.platillo.update({
+      where: { id: platilloId },
+      data: { categoriaId },
+      select: { id: true, categoriaId: true },
+    });
+  }
+
+  async listar(skip: number, take: number) {
+    const [total, categorias] = await this.prisma.$transaction([
+      this.prisma.categoria.count(),
+      this.prisma.categoria.findMany({
+        orderBy: [{ nombre: 'asc' }, { id: 'asc' }],
+        skip,
+        take,
+        select: {
+          id: true,
+          nombre: true,
+          activa: true,
+          deshabilitadaEn: true,
+          _count: {
+            select: {
+              platillos: {
+                where: {
+                  sucursales: { some: { activo: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+    return { total, categorias };
+  }
+
+  listarActivas() {
+    return this.prisma.categoria.findMany({
+      where: { activa: true },
+      orderBy: { nombre: 'asc' },
+      select: CATEGORIA_PUBLICA,
+    });
+  }
+
+  listarPlatillosActivos(categoriaId: number) {
+    return this.prisma.platillo.findMany({
+      where: {
+        categoriaId,
+        sucursales: { some: { activo: true } },
+      },
+      orderBy: { nombre: 'asc' },
+      select: { id: true, nombre: true },
+    });
+  }
+}

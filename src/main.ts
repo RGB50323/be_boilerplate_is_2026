@@ -1,32 +1,35 @@
-import { ValidationPipe } from '@nestjs/common';
+import { ApiValidationPipe } from '@Common/pipes';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 import type { EnvConfig } from '@Config';
+import { join } from 'node:path';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { origenesPermitidos } from './config/cors.js';
 
 const API_PREFIX = 'api/v1';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService<EnvConfig, true>);
 
   // Versionado en la URI: /api/v1/...
   app.setGlobalPrefix(API_PREFIX);
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      // Descarta propiedades que no estén en el DTO...
-      whitelist: true,
-      // ...y además rechaza la request con 400 si vienen de más, en vez de
-      // ignorarlas en silencio.
-      forbidNonWhitelisted: true,
-      // Convierte el payload al tipo del DTO (los query/params llegan string).
-      transform: true,
-    }),
-  );
+  app.enableCors({
+    origin: origenesPermitidos(),
+    credentials: true,
+  });
+
+  app.useGlobalPipes(new ApiValidationPipe());
 
   app.enableShutdownHooks();
+
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads/',
+    setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
+  });
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('SI Backend Boilerplate')
