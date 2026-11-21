@@ -22,6 +22,7 @@ Plataforma web para el sistema de gestión de restaurantes: los clientes consult
 | Luis Merino | 00083723 | [@Luismerino123](https://github.com/Luismerino123) | H06, H07, H08, H14, H15; despliegue en Heroku, dashboard del gerente de sucursal e imágenes en Supabase Storage |
 | Guillermo Cáceres | 00132623 | [@GuillermoCaceres3](https://github.com/GuillermoCaceres3) | H09, H10, H11, H12 y H13 |
 | Carlos Roberto Rivas Orellana | 00001323 | [@Carlomi](https://github.com/Carlomi) | H28, H29, H35 |
+| Henry Salvador Mauricio Mendoza | 00183223 | [@Carlomi](https://github.com/HenryMauricio2004) | H16 H17 H 18 H19 H20 |
 
 ## Documentación
 
