@@ -91,6 +91,9 @@ cp .env.example .env
 | `JWT_EXPIRES_IN` | `15m` | Vigencia del access token |
 | `REFRESH_TOKEN_EXPIRES_IN_DAYS` | `7` | Vigencia del refresh token |
 | `BCRYPT_SALT_ROUNDS` | `12` | Cost factor de bcrypt |
+| `SUPABASE_URL` | — | URL del proyecto de Supabase. Con ella y `SUPABASE_SECRET_KEY`, las imágenes de platillos se suben a Supabase Storage; sin ellas se guardan en `uploads/` |
+| `SUPABASE_SECRET_KEY` | — | Clave secreta (`service_role`) del proyecto. Solo en el backend, nunca en el front ni en el repo |
+| `SUPABASE_BUCKET_PLATILLOS` | `platillos` | Bucket público donde se guardan las imágenes de platillos |
 | `COCINA_MINUTOS_RETRASO` | `15` | Minutos de espera a partir de los cuales un pedido en cocina sale como `retrasado` |
 
 > La app **valida el entorno al arrancar** ([env.validation.ts](src/config/env.validation.ts)). Si falta `DATABASE_URL` o `JWT_SECRET`, o si el secreto es más corto que 32 caracteres, falla de inmediato con un mensaje claro en lugar de romperse más tarde.
@@ -107,7 +110,16 @@ openssl rand -base64 32
 
 ## Base de datos compartida (Supabase)
 
-El equipo trabaja sobre **una sola base PostgreSQL en Supabase** (H35). Prisma sigue siendo el ORM y el dueño de las migraciones; de Supabase solo usamos la base (no Auth, Storage ni la Data API, que está deshabilitada).
+El equipo trabaja sobre **una sola base PostgreSQL en Supabase** (H35). Prisma sigue siendo el ORM y el dueño de las migraciones; de Supabase usamos la base y **Storage para las imágenes de platillos** (no Auth ni la Data API, que está deshabilitada).
+
+### Imágenes de platillos (Storage)
+
+`POST /platillos/imagen` guarda la imagen con la implementación de `ALMACEN_IMAGENES` que elige [platillos.module.ts](src/platillos/platillos.module.ts):
+
+- **Con `SUPABASE_URL` y `SUPABASE_SECRET_KEY`:** sube el archivo al bucket `SUPABASE_BUCKET_PLATILLOS` y devuelve su URL pública (`https://<proyecto>.supabase.co/storage/v1/object/public/platillos/<uuid>.png`). Es lo que usa el backend desplegado: el disco de Heroku se borra en cada reinicio.
+- **Sin ellas:** la guarda en `uploads/platillos/` y devuelve `/uploads/platillos/<uuid>.png`, como antes. Es lo que usan el desarrollo local y las pruebas.
+
+El bucket tiene que existir y ser **público** (en Supabase: *Storage → New bucket → Public bucket*). Si Storage rechaza la subida, la API responde `503` y lo registra en el log.
 
 ### Conectarte
 

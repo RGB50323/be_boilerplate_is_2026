@@ -36,6 +36,7 @@ import {
   ApiBody,
   ApiConsumes,
   ApiPayloadTooLargeResponse,
+  ApiServiceUnavailableResponse,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import { ImagenPlatilloResponseDto } from '../dto/index.js';
@@ -110,6 +111,9 @@ export class PlatillosController {
   @ApiBadRequestResponse({ description: 'No se adjuntó ninguna imagen' })
   @ApiPayloadTooLargeResponse({ description: 'La imagen supera los 2 MB' })
   @ApiUnsupportedMediaTypeResponse({ description: 'No es JPG ni PNG' })
+  @ApiServiceUnavailableResponse({
+    description: 'No se pudo guardar la imagen en el almacenamiento',
+  })
   subirImagen(
     @UploadedFile() archivo: ArchivoSubido | undefined,
   ): Promise<ImagenPlatilloResponseDto> {
