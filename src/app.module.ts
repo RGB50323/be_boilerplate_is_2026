@@ -21,6 +21,7 @@ import { CategoriasModule } from '@Categorias';
 import { PlatillosModule } from '@Platillos';
 import { PedidosModule } from '@Pedidos';
 import { ResenasModule } from '@Resenas';
+import { LealtadModule } from './lealtad/index.js';
 import { OcupacionModule } from '@Ocupacion';
 
 @Module({
@@ -50,6 +51,7 @@ import { OcupacionModule } from '@Ocupacion';
     PlatillosModule,
     PedidosModule,
     ResenasModule,
+    LealtadModule,
     OcupacionModule,
   ],
   providers: [

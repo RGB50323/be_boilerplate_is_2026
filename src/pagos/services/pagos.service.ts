@@ -21,7 +21,10 @@ import {
 import { ProcesarPagoDto } from '@Pagos/dto';
 import { PagoRepository } from '../repositories/pago.repository.js';
 import { esSnapshotPdf } from '../../comprobantes/services/comprobante-pdf.snapshot.js';
-import type { TicketSnapshot } from '../types/ticket-snapshot.js';
+import {
+  correoLealtadDelSnapshot,
+  type TicketSnapshot,
+} from '../types/ticket-snapshot.js';
 import { PedidosLlevarService } from '../../pedidos/services/pedidos-llevar.service.js';
 
 import {
@@ -53,6 +56,12 @@ export class PagosService {
 
     // 2. Verificar autorización antes de devolver cualquier pago
     this.validarAutorizacion(pedido, usuario);
+    if (datos.correoLealtad && pedido.tipo !== TipoPedido.MESA) {
+      throw new BadRequestException(
+        'correoLealtad solo se admite en pagos de mesa',
+      );
+    }
+    const correoLealtad = datos.correoLealtad?.toLowerCase();
 
     const metodo = datos.metodo ?? 'TARJETA';
     const detallePago = this.prepararDetallePago(
@@ -66,7 +75,13 @@ export class PagosService {
       await this.pagoRepository.buscarPorSolicitud(solicitudId);
 
     if (pagoExistente) {
-      this.verificarReintento(pagoExistente, ticket, metodo, detallePago);
+      this.verificarReintento(
+        pagoExistente,
+        ticket,
+        metodo,
+        detallePago,
+        correoLealtad,
+      );
       await this.recuperarPedidoLlevar(pedido, pagoExistente.estado);
       return this.respuestaPago(pagoExistente);
     }
@@ -83,7 +98,13 @@ export class PagosService {
       const existente =
         await this.pagoRepository.buscarPorSolicitud(solicitudId);
       if (existente) {
-        this.verificarReintento(existente, ticket, metodo, detallePago);
+        this.verificarReintento(
+          existente,
+          ticket,
+          metodo,
+          detallePago,
+          correoLealtad,
+        );
         await this.recuperarPedidoLlevar(pedido, existente.estado);
         return this.respuestaPago(existente);
       }
@@ -123,7 +144,9 @@ export class PagosService {
           metodo === 'EFECTIVO' ? EstadoPago.CONFIRMADO : EstadoPago.PENDIENTE,
         metodo,
         detallePago,
-        ticketSnapshot,
+        ticketSnapshot: correoLealtad
+          ? { ...ticketSnapshot, correoLealtad }
+          : ticketSnapshot,
       });
 
       return this.respuestaPago(pago);
@@ -134,7 +157,13 @@ export class PagosService {
 
         // Recuperar operación anterior con la misma clave
         if (existente) {
-          this.verificarReintento(existente, ticket, metodo, detallePago);
+          this.verificarReintento(
+            existente,
+            ticket,
+            metodo,
+            detallePago,
+            correoLealtad,
+          );
           await this.recuperarPedidoLlevar(pedido, existente.estado);
           return this.respuestaPago(existente);
         }
@@ -462,6 +491,7 @@ export class PagosService {
     ticket: ProcesarPagoDto['ticket'],
     metodo: string,
     detallePago?: Prisma.InputJsonObject,
+    correoLealtad?: string,
   ): void {
     const snapshot = pago.ticketSnapshot ?? null;
     if (
@@ -469,6 +499,7 @@ export class PagosService {
       !new Prisma.Decimal(ticket.total).eq(pago.monto) ||
       (pago.metodo ?? 'TARJETA') !== metodo ||
       !isDeepStrictEqual(pago.detallePago ?? null, detallePago ?? null) ||
+      correoLealtadDelSnapshot(snapshot) !== correoLealtad ||
       (esSnapshotPdf(snapshot) &&
         !this.coincidenItems(ticket.items, snapshot.items))
     ) {

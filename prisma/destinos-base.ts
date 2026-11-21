@@ -33,6 +33,12 @@ export const PRUEBAS_TEMPORALES = {
     variable: 'PAGOS_TEST_DATABASE_URL',
     archivo: 'test/pagos-ticket-snapshot.e2e-spec.ts',
   },
+  // Cobro de H16 en PostgreSQL (incluye la acumulación de puntos de H18)
+  h16: {
+    base: 'h16_test',
+    variable: 'PAGOS_TEST_DATABASE_URL',
+    archivo: 'test/pagos-cobro.e2e-spec.ts',
+  },
 } as const;
 
 export type HistoriaTemporal = keyof typeof PRUEBAS_TEMPORALES;

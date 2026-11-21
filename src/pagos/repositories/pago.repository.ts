@@ -3,7 +3,14 @@ import { PrismaService } from '@Prisma/services';
 import { isDeepStrictEqual } from 'node:util';
 import { EstadoPago, EstadoPedido, TipoPedido, Prisma } from '@PrismaClient';
 import { ComprobantesService } from '../../comprobantes/services/comprobantes.service.js';
-import type { TicketSnapshot } from '../types/ticket-snapshot.js';
+import {
+  correoLealtadDelSnapshot,
+  type TicketSnapshot,
+} from '../types/ticket-snapshot.js';
+import {
+  acumularPorPago,
+  revertirPuntosPorReembolso,
+} from '../../lealtad/utils/puntos.js';
 import { cerrarPedidoLlevarListo } from '../../pedidos/utils/cerrar-pedido-llevar.js';
 
 //----------------------------------------------------------------------------
@@ -15,7 +22,7 @@ interface CrearPagoData {
   transaccionId: string;
   monto: Prisma.Decimal;
   estado: EstadoPago;
-  ticketSnapshot: TicketSnapshot;
+  ticketSnapshot: TicketSnapshot & { correoLealtad?: string };
   metodo: 'EFECTIVO' | 'TARJETA';
   detallePago?: Prisma.InputJsonObject;
 }
@@ -183,6 +190,8 @@ export class PagoRepository {
     pago: {
       id: number;
       pedidoId: number;
+      monto: Prisma.Decimal;
+      confirmadoEn: Date | null;
       ticketSnapshot: Prisma.JsonValue;
       detallePago: Prisma.JsonValue;
     },
@@ -196,7 +205,7 @@ export class PagoRepository {
 
     const pedido = await tx.pedido.findUniqueOrThrow({
       where: { id: pago.pedidoId },
-      select: { tipo: true, estado: true },
+      select: { tipo: true, estado: true, clienteId: true },
     });
     if (pedido.tipo === TipoPedido.MESA) {
       const cierre = await tx.pedido.updateMany({
@@ -224,19 +233,29 @@ export class PagoRepository {
       }
     }
 
+    const correoLealtad = correoLealtadDelSnapshot(pago.ticketSnapshot);
+    const ticketSnapshot =
+      typeof pago.ticketSnapshot === 'object' &&
+      !Array.isArray(pago.ticketSnapshot)
+        ? { ...pago.ticketSnapshot }
+        : pago.ticketSnapshot;
+    if (typeof ticketSnapshot === 'object' && !Array.isArray(ticketSnapshot)) {
+      delete ticketSnapshot.correoLealtad;
+    }
     const comprobante = await this.comprobantesService.emitir(tx, {
       id: pago.id,
       pedidoId: pago.pedidoId,
       transaccionId,
-      ticketSnapshot: pago.ticketSnapshot,
+      ticketSnapshot,
       detallePago: pago.detallePago ?? undefined,
     });
     if (
-      !isDeepStrictEqual(comprobante.contenidoSnapshot, pago.ticketSnapshot) ||
+      !isDeepStrictEqual(comprobante.contenidoSnapshot, ticketSnapshot) ||
       !isDeepStrictEqual(comprobante.detallePago, pago.detallePago)
     ) {
       throw new ConflictException('El comprobante no coincide con el pago');
     }
+    await acumularPorPago(tx, pago, pedido, correoLealtad);
     return { id: comprobante.id };
   }
 
@@ -245,17 +264,31 @@ export class PagoRepository {
     estadoActual: EstadoPago,
     estadoNuevo: Exclude<EstadoPago, 'CONFIRMADO'>,
   ) {
-    return this.prisma.pago.updateMany({
-      where: {
-        transaccionId,
-        estado: estadoActual,
-      },
-      data: {
-        estado: estadoNuevo,
-        ...(estadoNuevo === EstadoPago.REEMBOLSADO
-          ? { reembolsadoEn: new Date() }
-          : {}),
-      },
+    const actualizar = (tx: Prisma.TransactionClient) =>
+      tx.pago.updateMany({
+        where: {
+          transaccionId,
+          estado: estadoActual,
+        },
+        data: {
+          estado: estadoNuevo,
+          ...(estadoNuevo === EstadoPago.REEMBOLSADO
+            ? { reembolsadoEn: new Date() }
+            : {}),
+        },
+      });
+    if (estadoNuevo !== EstadoPago.REEMBOLSADO) return actualizar(this.prisma);
+
+    return this.prisma.$transaction(async (tx) => {
+      const resultado = await actualizar(tx);
+      if (resultado.count === 1) {
+        const pago = await tx.pago.findUniqueOrThrow({
+          where: { transaccionId },
+          select: { pedidoId: true },
+        });
+        await revertirPuntosPorReembolso(tx, pago.pedidoId);
+      }
+      return resultado;
     });
   }
 

@@ -10,3 +10,16 @@ export type TicketSnapshot = {
   }[];
   total: string;
 };
+
+export function correoLealtadDelSnapshot(
+  snapshot: unknown,
+): string | undefined {
+  if (
+    typeof snapshot === 'object' &&
+    snapshot !== null &&
+    'correoLealtad' in snapshot &&
+    typeof snapshot.correoLealtad === 'string'
+  ) {
+    return snapshot.correoLealtad;
+  }
+}
