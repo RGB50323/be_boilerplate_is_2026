@@ -38,7 +38,10 @@ describe('PedidosService (consultas)', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    service = new PedidosService(repository as unknown as PedidosRepository);
+    service = new PedidosService(
+      repository as unknown as PedidosRepository,
+      { pedidoEnviadoACocina: vi.fn(), pedidoActualizado: vi.fn() } as never,
+    );
   });
 
   describe('listarMesas', () => {

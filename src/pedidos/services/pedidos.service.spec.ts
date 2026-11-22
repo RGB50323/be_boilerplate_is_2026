@@ -20,6 +20,7 @@ const repository = {
 };
 
 const mesero = { id: 'mesero-1', sucursalId: 1 } as unknown as User;
+const cocina = { pedidoEnviadoACocina: vi.fn(), pedidoActualizado: vi.fn() };
 
 const dto: CrearPedidoDto = {
   tipo: 'MESA',
@@ -71,7 +72,10 @@ describe('PedidosService', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    service = new PedidosService(repository as unknown as PedidosRepository);
+    service = new PedidosService(
+      repository as unknown as PedidosRepository,
+      cocina as never,
+    );
   });
 
   describe('crear', () => {
@@ -101,6 +105,19 @@ describe('PedidosService', () => {
           },
         ],
       });
+    });
+
+    it('avisa al tablero de cocina del pedido nuevo', async () => {
+      preparar();
+      await service.crear(dto, mesero);
+      expect(cocina.pedidoEnviadoACocina).toHaveBeenCalledWith(120);
+    });
+
+    it('si el aviso a cocina falla igual devuelve el pedido creado', async () => {
+      preparar();
+      cocina.pedidoEnviadoACocina.mockRejectedValue(new Error('socket caído'));
+      const resultado = await service.crear(dto, mesero);
+      expect(resultado.pedidoId).toBe(120);
     });
 
     it('calcula el total sumando precio por cantidad de cada platillo', async () => {

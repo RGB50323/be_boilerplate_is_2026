@@ -49,7 +49,10 @@ describe('H04. Registrar el pedido de una mesa', () => {
       sucursalId: 1,
       estado: EstadoPedido.ENVIADO_COCINA,
     });
-    service = new PedidosService(repo as unknown as PedidosRepository);
+    service = new PedidosService(
+      repo as unknown as PedidosRepository,
+      { pedidoEnviadoACocina: vi.fn(), pedidoActualizado: vi.fn() } as never,
+    );
   });
 
   it('AC1: al confirmar, el pedido queda “Enviado a cocina” con número único, fecha y hora', async () => {

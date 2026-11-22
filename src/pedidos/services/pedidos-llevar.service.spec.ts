@@ -38,12 +38,17 @@ const repo = {
   cancelar: vi.fn(),
 };
 const pedidos = { armarItems: vi.fn(), traducir: vi.fn() };
+const cocina = { pedidoEnviadoACocina: vi.fn() };
 
 let service: PedidosLlevarService;
 beforeEach(() => {
   vi.resetAllMocks();
   pedidos.traducir.mockImplementation((e: unknown) => e);
-  service = new PedidosLlevarService(repo as never, pedidos as never);
+  service = new PedidosLlevarService(
+    repo as never,
+    pedidos as never,
+    cocina as never,
+  );
 });
 
 describe('crear (LLEVAR)', () => {
@@ -129,6 +134,16 @@ describe('confirmarPago', () => {
       numero: 'S1-000121',
       estado: 'RECIBIDO',
     });
+  });
+
+  it('con el pago confirmado avisa al tablero de cocina', async () => {
+    repo.confirmarPago.mockResolvedValue({
+      id: 121,
+      numero: 'S1-000121',
+      estado: EstadoPedido.RECIBIDO,
+    });
+    await service.confirmarPago(121);
+    expect(cocina.pedidoEnviadoACocina).toHaveBeenCalledWith(121);
   });
 
   it('sigue PENDIENTE_PAGO si el pago no está confirmado', async () => {
