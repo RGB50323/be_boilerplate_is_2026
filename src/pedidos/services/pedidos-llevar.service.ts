@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -25,6 +26,7 @@ import {
 } from '../repositories/pedidos-llevar.repository.js';
 import { PedidosService } from './pedidos.service.js';
 import { paginar } from '@Common/paginacion';
+import { CocinaEventsService } from '@Cocina/services';
 
 const SIN_PERMISO = 'No tienes permiso para realizar esta acción.';
 const NO_CANCELABLE = 'El pedido ya no se puede cancelar.';
@@ -32,9 +34,12 @@ const PEDIDOS_POR_PAGINA = 10;
 
 @Injectable()
 export class PedidosLlevarService {
+  private readonly logger = new Logger(PedidosLlevarService.name);
+
   constructor(
     private readonly repository: PedidosLlevarRepository,
     private readonly pedidos: PedidosService,
+    private readonly cocinaEvents: CocinaEventsService,
   ) {}
 
   async crear(
@@ -77,6 +82,12 @@ export class PedidosLlevarService {
     const pedido = await this.repository.confirmarPago(pedidoId);
     if (pedido === null) {
       throw new NotFoundException('El pedido para llevar no existe.');
+    }
+    // Con el pago confirmado el pedido entra al tablero de cocina
+    try {
+      await this.cocinaEvents.pedidoEnviadoACocina(pedido.id);
+    } catch (error) {
+      this.logger.error('No se pudo avisar a cocina.', error);
     }
     return {
       pedidoId: pedido.id,

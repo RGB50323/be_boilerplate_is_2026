@@ -62,6 +62,7 @@ describe.skipIf(!databaseUrl)('H16/H17 cobro en PostgreSQL', () => {
     llevar = new PedidosLlevarService(
       new PedidosLlevarRepository(db),
       {} as PedidosService,
+      { pedidoEnviadoACocina: vi.fn() } as never,
     );
     repositorio = new PagoRepository(db, comprobantes);
     pagos = new PagosService(
