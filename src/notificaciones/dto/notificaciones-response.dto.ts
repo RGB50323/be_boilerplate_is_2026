@@ -67,6 +67,9 @@ export class ListaNotificacionesResponseDto {
   @ApiProperty()
   pagina!: number;
 
+  @ApiProperty({ description: 'Cantidad de páginas (0 si no hay notificaciones).' })
+  totalPaginas!: number;
+
   @ApiProperty({ description: 'Cantidad total de notificaciones no leídas.' })
   noLeidas!: number;
 }

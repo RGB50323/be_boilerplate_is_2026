@@ -265,8 +265,30 @@ describe('NotificacionesService', () => {
 
     expect(repository.listarPorUsuario).toHaveBeenCalledWith(USUARIO_ID, 2, 20);
     expect(repository.contarPorUsuario).toHaveBeenCalledWith(USUARIO_ID);
-    expect(resultado).toMatchObject({ total: 45, pagina: 2, noLeidas: 4 });
+    expect(resultado).toMatchObject({
+      total: 45,
+      pagina: 2,
+      totalPaginas: 3,
+      noLeidas: 4,
+    });
     expect(resultado.datos).toHaveLength(20);
+  });
+
+  it('un usuario sin notificaciones recibe totalPaginas 0 y datos vacíos', async () => {
+    const { service, repository } = crearContexto();
+    repository.listarPorUsuario.mockResolvedValue([]);
+    repository.contarPorUsuario.mockResolvedValue(0);
+    repository.contarNoLeidasPorUsuario.mockResolvedValue(0);
+
+    const resultado = await service.listar(USUARIO_ID, 1);
+
+    expect(resultado).toEqual({
+      datos: [],
+      total: 0,
+      pagina: 1,
+      totalPaginas: 0,
+      noLeidas: 0,
+    });
   });
 
   it('responde 404 al intentar marcar una notificación ajena', async () => {
