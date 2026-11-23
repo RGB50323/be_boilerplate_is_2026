@@ -113,6 +113,11 @@ export class PagosService {
       );
     }
 
+    if (correoLealtad && !(await this.pagoRepository.buscarClienteLealtad(correoLealtad))) {
+      const mensaje = 'El correo no corresponde a un cliente registrado y habilitado.';
+      throw new BadRequestException({ statusCode: 400, message: mensaje, errores: { correoLealtad: mensaje } });
+    }
+
     // 6. Ejecutar la pasarela simulada
     const resultado =
       metodo === 'TARJETA'
