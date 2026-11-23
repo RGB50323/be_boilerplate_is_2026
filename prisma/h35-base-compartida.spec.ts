@@ -112,11 +112,21 @@ describe('H35. Base de datos compartida en la nube (Supabase)', () => {
     }
   });
 
-  it('AC8: el README explica la conexión y los comandos que no se corren contra la base compartida, y el CLI los bloquea', () => {
-    const readme = leer('README.md');
-    expect(readme).toContain('## Base de datos compartida (Supabase)');
-    for (const comando of ['migrate dev', 'migrate reset', 'db:reset']) {
-      expect(readme).toContain(comando);
+  it('AC8: la documentación explica la conexión y los comandos que no se corren contra la base compartida, y el CLI los bloquea', () => {
+    // Desde la documentación 1.0.0 esto vive en docs/, no en el README.
+    const instalacion = leer('docs/05-instalacion-local.md');
+    const arquitectura = leer('docs/02-arquitectura.md');
+    expect(instalacion).toContain('## Variables de entorno');
+    for (const variable of [
+      'DATABASE_URL',
+      'DIRECT_URL',
+      'LOCAL_DATABASE_URL',
+    ]) {
+      expect(instalacion).toContain(variable);
+    }
+    expect(instalacion).toContain('db:reset');
+    for (const comando of ['migrate dev', 'migrate reset']) {
+      expect(arquitectura).toContain(comando);
     }
     expect(() =>
       urlParaCliPrisma(['migrate', 'reset', '--force'], conSupabase),
