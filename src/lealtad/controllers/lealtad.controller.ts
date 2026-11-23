@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseIntPipe,
   Patch,
@@ -169,11 +170,14 @@ export class LealtadController {
   }
 
   @Get('admin/regla')
+  @Header('Content-Type', 'application/json')
   @Roles(Rol.GERENTE)
   @ApiOperation({ summary: 'Regla de acumulación vigente (H20)' })
   @ApiOkResponse({ type: ReglaPuntosDto, description: 'null si no hay regla' })
-  consultarRegla() {
-    return this.lealtad.consultarRegla();
+  async consultarRegla() {
+    const regla = await this.lealtad.consultarRegla();
+    // Express envía un cuerpo vacío si Nest recibe null directamente.
+    return regla === null ? JSON.stringify(null) : regla;
   }
 
   @Put('admin/regla')

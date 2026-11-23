@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { PrismaService } from '@Prisma/services';
+import { Prisma } from '@PrismaClient';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LealtadService } from './lealtad.service.js';
 
@@ -39,7 +40,9 @@ function servicio() {
     },
     reglaPuntos: {
       findFirst: vi.fn().mockResolvedValue({ id: 2, puntosPorDolar: 1 }),
+      create: vi.fn(),
       update: vi.fn().mockResolvedValue({ id: 2, activa: false }),
+      updateMany: vi.fn(),
     },
     historialLealtad: { create: vi.fn() },
   };
@@ -187,6 +190,33 @@ describe('LealtadService', () => {
   });
 
   describe('H20 administración', () => {
+    it('crea la primera regla y reutiliza la misma al repetir la tasa', async () => {
+      const { lealtad, tx } = servicio();
+      const datos = { puntosPorDolar: 3, vigenteDesde: ahora, creadaEn: ahora };
+      const regla = { id: 1, activa: true, ...datos };
+      tx.reglaPuntos.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(regla);
+      tx.reglaPuntos.create.mockResolvedValue(regla);
+
+      await expect(lealtad.configurarRegla('g-1', 3)).resolves.toEqual(regla);
+      await expect(lealtad.configurarRegla('g-1', 3)).resolves.toEqual(regla);
+
+      expect(tx.reglaPuntos.create).toHaveBeenCalledExactlyOnceWith({
+        data: datos,
+      });
+      expect(tx.historialLealtad.create).toHaveBeenCalledExactlyOnceWith({
+        data: {
+          usuarioId: 'g-1',
+          entidad: 'REGLA',
+          entidadId: regla.id,
+          accion: 'CREACION',
+          valorAnterior: Prisma.DbNull,
+          valorNuevo: regla,
+        },
+      });
+    });
+
     it('deshabilita la regla vigente y guarda el historial', async () => {
       const { lealtad, tx } = servicio();
       await lealtad.deshabilitarRegla('g-1');
