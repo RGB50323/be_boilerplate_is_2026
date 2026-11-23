@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EstadoCorreo, ModuloOrigen, Rol, type Prisma } from '@PrismaClient';
+import { paginar, type Paginado } from '@Common/paginacion';
 import { NotificacionRepository } from '@Notificaciones/repositories';
 import { ValidacionAvisoError } from '@Notificaciones/errors';
 import type {
@@ -21,12 +22,9 @@ import {
 const POR_PAGINA = 20;
 const MAXIMO_INTENTOS_CORREO = 3;
 
-export interface ResultadoListadoNotificaciones {
-  datos: NotificacionListado[];
-  total: number;
-  pagina: number;
+export type ResultadoListadoNotificaciones = Paginado<NotificacionListado> & {
   noLeidas: number;
-}
+};
 
 @Injectable()
 export class NotificacionesService {
@@ -103,7 +101,7 @@ export class NotificacionesService {
       this.repository.contarNoLeidasPorUsuario(usuarioId),
     ]);
 
-    return { datos, total, pagina, noLeidas };
+    return { ...paginar(datos, total, pagina, POR_PAGINA), noLeidas };
   }
 
   async marcarLeida(id: string, usuarioId: string): Promise<NotificacionLeida> {
