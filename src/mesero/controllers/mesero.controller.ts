@@ -24,6 +24,14 @@ import { Rol, type User } from '@PrismaClient';
 export class MeseroController {
   constructor(private readonly entregasService: EntregasService) {}
 
+  @Get('pedidos-pendientes-de-cobro')
+  @ApiOperation({
+    summary: 'Lista el último pedido de cada mesa de la sucursal y sus acciones de cobro',
+  })
+  listarPedidosPendientesDeCobro(@CurrentUser() user: User) {
+    return this.entregasService.listarPedidosPendientesDeCobro(user);
+  }
+
   @Get('items-listos')
   @ApiOperation({
     summary: 'Lista los platillos listos por entregar en las mesas de la sucursal',

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@Prisma/services';
 import {
   EstadoItem,
+  EstadoPago,
   EstadoPedido,
   Prisma,
   TipoPedido,
@@ -31,6 +32,33 @@ interface FilaItemBloqueado {
 @Injectable()
 export class EntregasRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  findUltimosPedidosPorMesa(sucursalId: number) {
+    return this.prisma.mesa.findMany({
+      where: { sucursalId },
+      orderBy: { numero: 'asc' },
+      select: {
+        numero: true,
+        pedidos: {
+          where: { sucursalId, tipo: TipoPedido.MESA },
+          orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: {
+            id: true,
+            numero: true,
+            estado: true,
+            pagos: {
+              where: { estado: { not: EstadoPago.RECHAZADO } },
+              select: {
+                estado: true,
+                comprobante: { select: { id: true, contenidoSnapshot: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
 
   findItemsListos(sucursalId: number) {
     return this.prisma.detallePedido.findMany({
