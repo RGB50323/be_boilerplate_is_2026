@@ -3,10 +3,12 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { EstadoItem, Prisma, type User } from '@PrismaClient';
+import { CocinaEventsService } from '@Cocina/services';
 import type {
   AgregarItemsDto,
   CambiarItemDto,
@@ -35,7 +37,21 @@ const SIN_PERMISO_VER = 'No tienes permiso para ver este recurso.';
 
 @Injectable()
 export class PedidosService {
-  constructor(private readonly repository: PedidosRepository) {}
+  private readonly logger = new Logger(PedidosService.name);
+
+  constructor(
+    private readonly repository: PedidosRepository,
+    private readonly cocinaEvents: CocinaEventsService,
+  ) {}
+
+  // Avisa al tablero de cocina sin romper el pedido si el aviso falla
+  private async avisarCocina(aviso: () => Promise<void>): Promise<void> {
+    try {
+      await aviso();
+    } catch (error) {
+      this.logger.error('No se pudo avisar a cocina.', error);
+    }
+  }
 
   async crear(
     dto: CrearPedidoDto,
@@ -73,6 +89,9 @@ export class PedidosService {
         total,
         items,
       });
+      await this.avisarCocina(() =>
+        this.cocinaEvents.pedidoEnviadoACocina(pedido.id),
+      );
       return {
         pedidoId: pedido.id,
         numero: pedido.numero ?? '',
@@ -99,6 +118,11 @@ export class PedidosService {
         pedido.sucursalId,
         items,
       );
+      // Si estaba listo vuelve a cocina; si ya estaba, se actualiza
+      await this.avisarCocina(async () => {
+        await this.cocinaEvents.pedidoEnviadoACocina(pedido.id);
+        await this.cocinaEvents.pedidoActualizado(pedido.id);
+      });
       return {
         pedidoId: pedido.id,
         total: total.toNumber(),

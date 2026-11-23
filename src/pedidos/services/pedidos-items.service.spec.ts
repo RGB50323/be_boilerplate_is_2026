@@ -53,12 +53,17 @@ const dtoAgregar = {
   items: [{ platilloId: 12, cantidad: 2, nota: 'sin cebolla' }],
 };
 
+const cocina = { pedidoEnviadoACocina: vi.fn(), pedidoActualizado: vi.fn() };
+
 describe('PedidosService (items)', () => {
   let service: PedidosService;
 
   beforeEach(() => {
     vi.resetAllMocks();
-    service = new PedidosService(repository as unknown as PedidosRepository);
+    service = new PedidosService(
+      repository as unknown as PedidosRepository,
+      cocina as never,
+    );
   });
 
   describe('agregarItems', () => {
@@ -88,6 +93,22 @@ describe('PedidosService (items)', () => {
           nota: 'sin cebolla',
         }),
       ]);
+    });
+
+    it('avisa a cocina para que el pedido vuelva o se actualice en el tablero', async () => {
+      repository.buscarPedido.mockResolvedValue(pedidoAbierto());
+      repository.buscarPlatillos.mockResolvedValue([platillo()]);
+      repository.agregarItems.mockResolvedValue({
+        total: new Prisma.Decimal(7.5),
+        agregados: [
+          { id: 400, platilloId: 12, cantidad: 2, estado: EstadoItem.PENDIENTE },
+        ],
+      });
+
+      await service.agregarItems(120, dtoAgregar, mesero);
+
+      expect(cocina.pedidoEnviadoACocina).toHaveBeenCalledWith(120);
+      expect(cocina.pedidoActualizado).toHaveBeenCalledWith(120);
     });
 
     it('404 si el pedido no existe', async () => {

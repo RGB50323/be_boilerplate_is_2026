@@ -61,8 +61,12 @@ describe('H05. Hacer un pedido para llevar', () => {
     repoPedidos.buscarPlatillos.mockResolvedValue([platillo()]);
     const pedidos = new PedidosService(
       repoPedidos as unknown as PedidosRepository,
+      { pedidoEnviadoACocina: vi.fn(), pedidoActualizado: vi.fn() } as never,
     );
-    service = new PedidosLlevarService(repo as never, pedidos);
+    service = new PedidosLlevarService(repo as never, pedidos, {
+      pedidoEnviadoACocina: vi.fn(),
+      pedidoActualizado: vi.fn(),
+    } as never);
   });
 
   it('AC1: solo acepta platillos habilitados de la sucursal elegida', async () => {
