@@ -114,6 +114,7 @@ describe('Entrega de platillos a la mesa (e2e)', () => {
     if (prisma) {
       const ids = [sucursales.a, sucursales.b];
       await prisma.pedido.deleteMany({ where: { sucursalId: { in: ids } } });
+      await prisma.platilloSucursal.deleteMany({ where: { platilloId } });
       await prisma.platillo.deleteMany({ where: { id: platilloId } });
       await prisma.categoria.deleteMany({ where: { id: categoriaId } });
       await prisma.user.deleteMany({ where: { id: { in: Object.values(usuarios) } } });
@@ -170,6 +171,76 @@ describe('Entrega de platillos a la mesa (e2e)', () => {
       await listar(tokens.cocina).expect(403);
       await request(app.getHttpServer()).get('/mesero/items-listos').expect(401);
     });
+  });
+
+  describe('GET /mesero/pedidos-pendientes-de-cobro', () => {
+    const ruta = '/mesero/pedidos-pendientes-de-cobro';
+
+    it('lista pedidos de mesa entregados de la sucursal y protege la consulta por rol', async () => {
+      const local = await crearPedido(sucursales.a, [EstadoItem.ENTREGADO], {
+        estado: EstadoPedido.ENTREGADO,
+      });
+      const externo = await crearPedido(sucursales.b, [EstadoItem.ENTREGADO], {
+        estado: EstadoPedido.ENTREGADO,
+      });
+      const ids = new Set([local.pedidoId, externo.pedidoId]);
+
+      const res = await request(app.getHttpServer())
+        .get(ruta)
+        .set('Authorization', `Bearer ${tokens.mesero2}`)
+        .expect(200);
+      const pedidos = res.body as { pedidoId: number }[];
+      expect(pedidos.filter((p) => ids.has(p.pedidoId))).toEqual([
+        {
+          pedidoId: local.pedidoId, numero: null, mesa: local.mesa,
+          puedeCobrar: true, pagoBloqueante: null, comprobanteId: null,
+        },
+      ]);
+      await request(app.getHttpServer()).get(ruta).expect(401);
+      await request(app.getHttpServer()).get(ruta)
+        .set('Authorization', `Bearer ${tokens.cocina}`).expect(403);
+    });
+  });
+
+  it('registra un pedido MESA y lo pasa de listo a pendiente de cobro por HTTP', async () => {
+    const sucursalId = sucursales.a;
+    const mesa = await prisma.mesa.create({ data: { sucursalId, numero: siguienteMesa++ } });
+    await prisma.platilloSucursal.create({
+      data: { sucursalId, platilloId, precio: 5, disponibilidad: 5 },
+    });
+    const alta = await request(app.getHttpServer()).post('/pedidos')
+        .set('Authorization', `Bearer ${tokens.mesero}`)
+        .send({ tipo: 'MESA', mesaId: mesa.id, items: [{ platilloId, cantidad: 2 }] })
+        .expect(201);
+      const pedidoId = (alta.body as { pedidoId: number }).pedidoId;
+      const guardado = await prisma.pedido.findUniqueOrThrow({
+        where: { id: pedidoId },
+        include: { detalles: true },
+      });
+      expect(guardado).toMatchObject({
+        sucursalId, mesaId: mesa.id, estado: EstadoPedido.ENVIADO_COCINA,
+        detalles: [{ platilloId, cantidad: 2, estado: EstadoItem.PENDIENTE }],
+      });
+      const itemId = guardado.detalles[0].id;
+      const comanda = {
+        id: pedidoId, mesaNumero: mesa.numero,
+        items: [expect.objectContaining({ id: itemId, estado: EstadoItem.PENDIENTE })],
+      };
+      const cocina = await request(app.getHttpServer()).get('/cocina/pedidos')
+        .set('Authorization', `Bearer ${tokens.cocina}`).expect(200);
+      expect(cocina.body).toContainEqual(expect.objectContaining(comanda));
+
+      await request(app.getHttpServer()).patch(`/cocina/items/${itemId}/listo`)
+        .set('Authorization', `Bearer ${tokens.cocina}`).expect(200);
+      expect((await listar().expect(200)).body).toContainEqual(
+        expect.objectContaining({ itemId, pedidoId, mesa: mesa.numero }),
+      );
+      await entregar(itemId).expect(200);
+      const cobros = await request(app.getHttpServer()).get('/mesero/pedidos-pendientes-de-cobro')
+        .set('Authorization', `Bearer ${tokens.mesero}`).expect(200);
+      expect(cobros.body).toContainEqual(
+        expect.objectContaining({ pedidoId, mesa: mesa.numero, puedeCobrar: true }),
+      );
   });
 
   describe('PATCH /mesero/items/:itemId/entregado', () => {

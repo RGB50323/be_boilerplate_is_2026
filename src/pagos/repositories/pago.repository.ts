@@ -9,6 +9,7 @@ import {
 } from '../types/ticket-snapshot.js';
 import {
   acumularPorPago,
+  buscarClienteElegible,
   revertirPuntosPorReembolso,
 } from '../../lealtad/utils/puntos.js';
 import { cerrarPedidoLlevarListo } from '../../pedidos/utils/cerrar-pedido-llevar.js';
@@ -35,6 +36,12 @@ export class PagoRepository {
     private readonly prisma: PrismaService,
     private readonly comprobantesService: ComprobantesService,
   ) {}
+
+  buscarClienteLealtad(correo: string) {
+    return buscarClienteElegible(this.prisma, {
+      email: { equals: correo, mode: 'insensitive' },
+    });
+  }
 
   // Buscar una operación previamente registrada
   buscarPorSolicitud(idempotencyKey: string) {

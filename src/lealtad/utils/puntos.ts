@@ -51,6 +51,18 @@ export async function puntosPendientes(
   return resultado._sum.puntos ?? 0;
 }
 
+export async function buscarClienteElegible(
+  tx: Prisma.TransactionClient,
+  identidad: Prisma.UserWhereInput,
+) {
+  const clientes = await tx.user.findMany({
+    where: { ...identidad, isActive: true, rol: Rol.CLIENTE },
+    select: { id: true },
+    take: 2,
+  });
+  return clientes.length === 1 ? clientes[0] : null;
+}
+
 export async function acumularPorPago(
   tx: Prisma.TransactionClient,
   pago: { pedidoId: number; monto: Prisma.Decimal; confirmadoEn: Date | null },
@@ -68,12 +80,8 @@ export async function acumularPorPago(
         : null;
   if (!identidad) return;
 
-  const clientes = await tx.user.findMany({
-    where: { ...identidad, isActive: true, rol: Rol.CLIENTE },
-    select: { id: true },
-    take: 2,
-  });
-  if (clientes.length !== 1) return;
+  const cliente = await buscarClienteElegible(tx, identidad);
+  if (!cliente) return;
   // Una confirmación en curso puede ver la regla anterior ya reemplazada.
   const regla = await tx.reglaPuntos.findFirst({
     where: {
@@ -89,7 +97,7 @@ export async function acumularPorPago(
   const puntos = pago.monto.mul(regla.puntosPorDolar).floor().toNumber();
   if (puntos <= 0) return;
 
-  const clienteId = clientes[0].id;
+  const clienteId = cliente.id;
   await tx.cuentaPuntos.createMany({
     data: { clienteId },
     skipDuplicates: true,

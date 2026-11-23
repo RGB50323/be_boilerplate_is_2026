@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { EstadoItem, EstadoPedido, Prisma, TipoPedido } from '@PrismaClient';
+import {
+  EstadoItem,
+  EstadoPago,
+  EstadoPedido,
+  Prisma,
+  TipoPedido,
+} from '@PrismaClient';
 import { PrismaService } from '@Prisma/services';
 
 export const ESTADOS_CERRADOS: EstadoPedido[] = [
@@ -7,6 +13,18 @@ export const ESTADOS_CERRADOS: EstadoPedido[] = [
   EstadoPedido.CERRADO,
   EstadoPedido.CANCELADO,
 ];
+
+const PEDIDO_QUE_OCUPA_MESA: Prisma.PedidoWhereInput = {
+  OR: [
+    { estado: { notIn: ESTADOS_CERRADOS } },
+    {
+      estado: EstadoPedido.ENTREGADO,
+      pagos: {
+        none: { estado: { in: [EstadoPago.CONFIRMADO, EstadoPago.REEMBOLSADO] } },
+      },
+    },
+  ],
+};
 
 export class DisponibilidadInsuficienteError extends Error {
   constructor(readonly platilloId: number) {
@@ -145,7 +163,7 @@ export class PedidosRepository {
 
   buscarPedidoAbierto(mesaId: number) {
     return this.prisma.pedido.findFirst({
-      where: { mesaId, estado: { notIn: ESTADOS_CERRADOS } },
+      where: { mesaId, ...PEDIDO_QUE_OCUPA_MESA },
       select: { id: true },
     });
   }
@@ -180,7 +198,7 @@ export class PedidosRepository {
 
   buscarPedidosAbiertos(mesaIds: number[]) {
     return this.prisma.pedido.findMany({
-      where: { mesaId: { in: mesaIds }, estado: { notIn: ESTADOS_CERRADOS } },
+      where: { mesaId: { in: mesaIds }, ...PEDIDO_QUE_OCUPA_MESA },
       select: { id: true, mesaId: true },
     });
   }
